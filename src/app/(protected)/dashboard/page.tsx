@@ -14,7 +14,7 @@ type Row = {
   programa?: "Regular" | "Verde";
   moneda?: "S/" | "US$";
   tea?: number;
-  tcea?: number;
+  tcea?: number | null;
   estado?: "Aprobado" | "En proceso" | "Rechazado";
 };
 
@@ -26,14 +26,14 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const ref = query(collection(db, "simulaciones"), where("uid", "==", user.uid), orderBy("createdAt", "desc"));
+      const ref = query(
+        collection(db, "simulaciones"),
+        where("uid", "==", user.uid),
+        orderBy("createdAt", "desc")
+      );
       const snap = await getDocs(ref);
-      const data = snap.docs.map(d => {
+      const data: Row[] = snap.docs.map(d => {
         const x = d.data() as any;
-        // mapeo suave a columnas de la UI
-        const tea = typeof x.tea === "number" ? x.tea : undefined;
-        const estado: Row["estado"] =
-          x.estado ?? (x.tcea != null ? "Aprobado" : "En proceso");
         return {
           id: d.id,
           nombre: x.nombre,
@@ -41,10 +41,10 @@ export default function DashboardPage() {
           proyecto: x.proyecto ?? "—",
           programa: x.programa ?? "Regular",
           moneda: "S/",
-          tea,
+          tea: typeof x.tea === "number" ? x.tea : undefined,
           tcea: x.tcea ?? null,
-          estado,
-        } as Row;
+          estado: x.estado ?? (x.tcea != null ? "Aprobado" : "En proceso"),
+        };
       });
       setRows(data);
     })();
@@ -59,21 +59,27 @@ export default function DashboardPage() {
 
   return (
     <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Histórico</h1>
-        <Link href="/simulaciones/nueva" className="rounded-lg bg-emerald-700 text-white px-3 py-2 hover:bg-emerald-800">
-          Nueva simulación
-        </Link>
+      {/* Encabezado con título + buscador + botón */}
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <h1 className="text-xl font-semibold">Histórico</h1>
+        <div className="flex items-center gap-3">
+          <input
+            value={qtxt}
+            onChange={(e) => setQtxt(e.target.value)}
+            placeholder="Search"
+            className="w-64 rounded-lg border px-3 py-2 bg-white"
+          />
+          <Link
+            href="/simulaciones/nueva"
+            className="rounded-lg bg-emerald-700 text-white px-3 py-2 hover:bg-emerald-800"
+          >
+            Nueva simulación
+          </Link>
+        </div>
       </div>
 
-      <input
-        value={qtxt}
-        onChange={(e) => setQtxt(e.target.value)}
-        placeholder="Buscar"
-        className="w-full md:max-w-xs rounded-lg border px-3 py-2 bg-white"
-      />
-
-      <div className="rounded-2xl border overflow-auto bg-white">
+      {/* Tabla dentro de card suave */}
+      <div className="rounded-xl border bg-white overflow-auto">
         <table className="min-w-[900px] w-full text-sm">
           <thead className="bg-neutral-50">
             <tr>
@@ -101,7 +107,11 @@ export default function DashboardPage() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><Td colSpan={7}><div className="p-4 text-neutral-600">Sin resultados</div></Td></tr>
+              <tr>
+                <Td colSpan={7}>
+                  <div className="p-4 text-neutral-600">Sin resultados</div>
+                </Td>
+              </tr>
             )}
           </tbody>
         </table>
@@ -110,13 +120,14 @@ export default function DashboardPage() {
   );
 }
 
+/* Helpers de tabla y badge */
+
 function Th({ children, className }: any) {
   return <th className={`p-2 text-left font-medium ${className ?? ""}`}>{children}</th>;
 }
 function Td({ children, right, colSpan, className }: any) {
   return <td colSpan={colSpan} className={`p-2 ${right ? "text-right" : ""} ${className ?? ""}`}>{children}</td>;
 }
-
 function Badge({ kind }: { kind: "Aprobado" | "En proceso" | "Rechazado" }) {
   const styles = {
     "Aprobado": "bg-emerald-100 text-emerald-800 border-emerald-200",
