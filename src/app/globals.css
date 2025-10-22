@@ -1,0 +1,10 @@
+/* Tailwind v4 se importa así */
+@import "tailwindcss";
+
+/* opcional: tokens/tema */
+@theme {
+  --container-2xl: 1200px;
+}
+
+/* utilidades del proyecto */
+html, body { height: 100%; }
