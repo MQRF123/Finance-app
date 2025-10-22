@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Check } from "lucide-react";
+import { simular } from "@/lib/finance/sim";
 
 /* =========================================================
    ESQUEMA ÚNICO (no importes otro schema ni tipos aquí)
@@ -144,20 +145,44 @@ export default function NuevaSimulacionPage() {
   const onBack = () => setStep((s) => (Math.max(1, s - 1) as 1 | 2 | 3 | 4));
 
   const onCalcular = async () => {
-    const ok = await form.trigger(
-      ["tasaValor", "plazoMeses", "precioVenta", "cuotaInicial", "bbp", "bbpMonto", "bonoVerde", "bonoVerdeMonto"] as any,
-      { shouldFocus: true }
-    );
-    if (!ok) return;
-    const v = form.getValues() as FormValues;
+  const ok = await form.trigger(
+    ["tasaValor","plazoMeses","precioVenta","cuotaInicial","bbp","bbpMonto","bonoVerde","bonoVerdeMonto"] as any,
+    { shouldFocus: true }
+  );
+  if (!ok) return;
+  const v = form.getValues() as any;
 
-    const bonos = (v.bbp ? v.bbpMonto : 0) + (v.bonoVerde ? v.bonoVerdeMonto : 0);
-    const principal = Math.max(0, v.precioVenta - v.cuotaInicial - bonos);
-    const i = tasaMensual(v.tipoTasa, v.tasaValor, v.capitalizacion);
-    const cuota = cuotaFrancesa(principal, i, v.plazoMeses) + (v.desgravamenMensualSoles || 0);
+  const bonos = [];
+  if (v.bbp && v.bbpMonto > 0) bonos.push({ nombre: "Bono Buen Pagador", monto: v.bbpMonto });
+  if (v.bonoVerde && v.bonoVerdeMonto > 0) bonos.push({ nombre: "Bono Verde", monto: v.bonoVerdeMonto });
+  if (v.btp && v.btpMonto > 0) bonos.push({ nombre: "Bono Techo Propio", monto: v.btpMonto }); // si luego agregas BTP al form
 
-    setPagoMensual(cuota);
-    setStep(4);
+  const seguro =
+    v.tasaDesgravamenMensual // si más adelante usas % sobre saldo
+      ? ({ mode: "porcentaje", tasaMensual: v.tasaDesgravamenMensual, base: v.baseSeguro ?? "saldo" } as const)
+      : ({ mode: "fijo", monto: v.desgravamenMensualSoles ?? 0 } as const);
+
+  const res = simular({
+    moneda: v.moneda,
+    tipoTasa: v.tipoTasa,
+    tasaValor: v.tasaValor,
+    capitalizacion: v.capitalizacion,
+    plazoMeses: v.plazoMeses,
+    graciaTipo: v.graciaTipo,
+    graciaMeses: v.graciaMeses,
+    precioVenta: v.precioVenta,
+    cuotaInicial: v.cuotaInicial,
+    bonos,
+    itf: 0.00005,
+    costosIniciales: (v.adminInicialSoles ?? 0) + (v.gastosNotariales ?? 0) + (v.gastosRegistrales ?? 0) + (v.tasacionPerito ?? 0),
+    seguro,
+    cobraSeguroEnGraciaTotal: false,
+  });
+
+  // Muestra resultados en tu Paso 4
+  setPagoMensual(res.pagoConstante + res.rows.find(r => r.mes === (v.graciaMeses + 1))!.seguro); // opcional
+  // Además puedes guardar en estado res.tcea, res.tirMensual, res.vanMensual y res.rows (cronograma)
+  setStep(4);
   };
 
   const moneda = form.watch("moneda") as FormValues["moneda"];
