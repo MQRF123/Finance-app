@@ -1,197 +1,560 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
+import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { simulacionSchema } from "@/lib/validation/simulacion";
-import type { z } from "zod";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { useAuth } from "@/hooks/use-auth";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { ITF } from "@/config/app";
-import { Stepper } from "@/components/ui/stepper";
-import { calcularTCEA } from "@/lib/finance/tcea";
+import { Check } from "lucide-react";
 
-type FormValues = z.infer<typeof simulacionSchema>;
+/* =========================================================
+   ESQUEMA ÚNICO (no importes otro schema ni tipos aquí)
+   ========================================================= */
+const schema = z.object({
+  // Paso 1 – Solicitante
+  dni: z.string().min(8, "DNI inválido"),
+  nombres: z.string().min(2, "Ingresa el nombre"),
+  estadoCivil: z.enum(["Soltero", "Casado", "Conviviente", "Divorciado", "Viudo"]),
+  ingresoMensual: z.coerce.number().min(0, "Debe ser ≥ 0"),
+  dependientes: z.coerce.number().min(0, "Debe ser ≥ 0").default(0),
+  email: z.string().email("Correo inválido"),
+  telefono: z.string().min(6, "Teléfono inválido"),
+  telefonoAlt: z.string().optional(),
+
+  // Paso 2 – Vivienda y proyecto
+  tipoInmueble: z.enum(["Casa", "Departamento", "Terreno", "Otro"]),
+  departamento: z.string().min(2, "Selecciona un departamento"),
+  proyecto: z.string().min(2, "Ingresa el proyecto"),
+  precioVenta: z.coerce.number().min(0, "Debe ser ≥ 0"),
+
+  // Paso 3 – Financiamiento y condiciones
+  moneda: z.enum(["PEN", "USD"]).default("PEN"),
+  tipoTasa: z.enum(["TEA", "TNA"]).default("TEA"),
+  tasaValor: z.coerce.number().min(0.0001, "Debe ser ≥ 0.0001"), // 0.10 = 10%
+  capitalizacion: z.coerce.number().min(1, "Debe ser ≥ 1").default(12), // si TNA
+  plazoMeses: z.coerce.number().min(1, "Debe ser ≥ 1"),
+  graciaTipo: z.enum(["sin", "parcial", "total"]).default("sin"),
+  graciaMeses: z.coerce.number().min(0, "Debe ser ≥ 0").default(0),
+
+  // Costos / seguros (maqueta)
+  desgravamenMensualSoles: z.coerce.number().min(0, "Debe ser ≥ 0").default(0),
+  adminInicialSoles: z.coerce.number().min(0, "Debe ser ≥ 0").default(0),
+
+  // Bonos / inicial
+  bbp: z.boolean().default(false),
+  bbpMonto: z.coerce.number().min(0, "Debe ser ≥ 0").default(0),
+  bonoVerde: z.boolean().default(false),
+  bonoVerdeMonto: z.coerce.number().min(0, "Debe ser ≥ 0").default(0),
+  cuotaInicial: z.coerce.number().min(0, "Debe ser ≥ 0").default(0),
+});
+
+// Tipo “fuerte” que usaremos puntualmente
+type FormValues = z.output<typeof schema>;
+
+/* ================== HELPERS FINANCIEROS ================== */
+function fmtMoney(v: number, moneda: "PEN" | "USD") {
+  return new Intl.NumberFormat("es-PE", {
+    style: "currency",
+    currency: moneda === "PEN" ? "PEN" : "USD",
+    minimumFractionDigits: 2,
+  }).format(v);
+}
+
+function tasaMensual(tipo: "TEA" | "TNA", valor: number, cap: number) {
+  if (tipo === "TEA") return Math.pow(1 + valor, 1 / 12) - 1;
+  return valor / cap;
+}
+
+function cuotaFrancesa(P: number, i: number, n: number) {
+  if (i <= 0) return P / n;
+  const f = Math.pow(1 + i, n);
+  return (P * i * f) / (f - 1);
+}
+
+/* ============ Helpers de inputs (anti negativos / rueda) ============ */
+const blockInvalidNumber = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (e.key === "-" || e.key === "+" || e.key === "e" || e.key === "E") e.preventDefault();
+};
+const blurOnWheel = (e: React.WheelEvent<HTMLInputElement>) => {
+  (e.currentTarget as HTMLInputElement).blur();
+};
+
+const INPUT_CLS =
+  "w-full rounded-xl border px-3 py-2 bg-white focus:outline-none focus:ring-2 ring-emerald-200";
 
 export default function NuevaSimulacionPage() {
-  const { user } = useAuth();
-  const router = useRouter();
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [pagoMensual, setPagoMensual] = useState<number | null>(null);
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(simulacionSchema),
-    defaultValues: {
-      nombre: "",
-      principal: 150000,
-      nMeses: 240,
-      tea: 0.10,
-      tasaDesgravamenMensual: 0.0004,
-      baseSeguroDesgravamen: "saldo",
-      gastosNotariales: 1200,
-      gastosRegistrales: 600,
-      tasacionPerito: 450,
-      itfPorcentaje: ITF,
-      financiarGastos: false,
-      mesesGracia: 0,
-      tipoGracia: "sin",
-    },
+  const defaultVals: FormValues = {
+    // Paso 1
+    dni: "",
+    nombres: "",
+    estadoCivil: "Soltero",
+    ingresoMensual: 0,
+    dependientes: 0,
+    email: "",
+    telefono: "",
+    telefonoAlt: "",
+
+    // Paso 2
+    tipoInmueble: "Departamento",
+    departamento: "Lima",
+    proyecto: "",
+    precioVenta: 0,
+
+    // Paso 3
+    moneda: "PEN",
+    tipoTasa: "TEA",
+    tasaValor: 0.1,
+    capitalizacion: 12,
+    plazoMeses: 240,
+    graciaTipo: "sin",
+    graciaMeses: 0,
+
+    desgravamenMensualSoles: 0,
+    adminInicialSoles: 0,
+
+    // Bonos / inicial
+    bbp: false,
+    bbpMonto: 0,
+    bonoVerde: false,
+    bonoVerdeMonto: 0,
+    cuotaInicial: 0,
+  };
+
+  // ✅ FAILSAFE: evita choque de tipos
+  const form = useForm({
+    resolver: zodResolver(schema) as any,
+    defaultValues: defaultVals as any,
+    mode: "onTouched",
   });
 
-  // ✅ Importa y usa useState “normal” y tipado
-  const [step, setStep] = useState<number>(1);
-
-  const next = async () => {
-    const sections: Record<number, (keyof FormValues)[]> = {
-      1: ["nombre", "principal", "nMeses", "tea"],
-      2: [
-        "tasaDesgravamenMensual",
-        "baseSeguroDesgravamen",
-        "gastosNotariales",
-        "gastosRegistrales",
-        "tasacionPerito",
-        "financiarGastos",
-      ],
-      3: ["mesesGracia", "tipoGracia"],
+  const onNext = async () => {
+    const groups: Record<number, (keyof FormValues)[]> = {
+      1: ["dni", "nombres", "estadoCivil", "ingresoMensual", "dependientes", "email", "telefono"],
+      2: ["tipoInmueble", "departamento", "proyecto", "precioVenta"],
+      3: ["tasaValor", "plazoMeses"],
+      4: [],
     };
-    if (sections[step]) {
-      const ok = await form.trigger(sections[step], { shouldFocus: true });
-      if (!ok) return;
-    }
-    // ✅ Evita “implicit any” tipando el parámetro
-    setStep((s: number) => Math.min(4, s + 1));
+    const ok = await form.trigger(groups[step] as any, { shouldFocus: true });
+    if (!ok) return;
+    setStep((s) => (Math.min(4, s + 1) as 1 | 2 | 3 | 4));
   };
 
-  const back = () => setStep((s: number) => Math.max(1, s - 1));
+  const onBack = () => setStep((s) => (Math.max(1, s - 1) as 1 | 2 | 3 | 4));
 
-  const onSubmit = async (v: FormValues) => {
-    if (!user) return;
-    try {
-      const { tcea } = calcularTCEA(v);
-      const ref = await addDoc(collection(db, "simulaciones"), {
-        ...v,
-        tcea,
-        uid: user.uid,
-        createdAt: serverTimestamp(),
-      });
-      toast.success("Simulación creada");
-      router.replace(`/simulaciones/${ref.id}`);
-    } catch (e: any) {
-      toast.error(e?.message ?? "No se pudo guardar");
-    }
+  const onCalcular = async () => {
+    const ok = await form.trigger(
+      ["tasaValor", "plazoMeses", "precioVenta", "cuotaInicial", "bbp", "bbpMonto", "bonoVerde", "bonoVerdeMonto"] as any,
+      { shouldFocus: true }
+    );
+    if (!ok) return;
+    const v = form.getValues() as FormValues;
+
+    const bonos = (v.bbp ? v.bbpMonto : 0) + (v.bonoVerde ? v.bonoVerdeMonto : 0);
+    const principal = Math.max(0, v.precioVenta - v.cuotaInicial - bonos);
+    const i = tasaMensual(v.tipoTasa, v.tasaValor, v.capitalizacion);
+    const cuota = cuotaFrancesa(principal, i, v.plazoMeses) + (v.desgravamenMensualSoles || 0);
+
+    setPagoMensual(cuota);
+    setStep(4);
   };
+
+  const moneda = form.watch("moneda") as FormValues["moneda"];
+  const simbolo = useMemo(() => (moneda === "PEN" ? "S/" : "US$"), [moneda]);
 
   return (
-    <section className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Nueva simulación</h1>
-        <Stepper step={step} />
-      </div>
+    <section>
+      <div className="grid grid-cols-[240px,1fr] rounded-2xl overflow-hidden border bg-white shadow-sm">
+        {/* Sidebar pasos */}
+        <aside className="bg-gradient-to-b from-emerald-900 to-emerald-700 text-white">
+          <div className="px-5 py-4 font-semibold">MiVivienda</div>
+          <ol className="px-2 pb-4 space-y-1">
+            {[
+              { n: 1, t: "Solicitante" },
+              { n: 2, t: "Vivienda y\nproyecto" },
+              { n: 3, t: "Financiamiento\ny condiciones" },
+              { n: 4, t: "Resultados" },
+            ].map((it) => (
+              <li key={it.n}>
+                <button
+                  type="button"
+                  onClick={() => setStep(it.n as 1 | 2 | 3 | 4)}
+                  className={`w-full text-left px-3 py-2 rounded-md whitespace-pre leading-snug flex items-center gap-3 ${
+                    step === it.n ? "bg-emerald-600" : "hover:bg-emerald-600/60"
+                  }`}
+                >
+                  <span
+                    className={`grid place-items-center h-6 w-6 rounded-full border ${
+                      step >= (it.n as number) ? "bg-white text-emerald-700 border-white" : "border-white/70"
+                    }`}
+                  >
+                    {step > (it.n as number) ? <Check className="h-4 w-4" /> : it.n}
+                  </span>
+                  <span className="text-sm">{it.t}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </aside>
 
-      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
-        {step === 1 && (
-          <div className="rounded-2xl border bg-white p-6 grid gap-4">
-            <h2 className="font-semibold">Datos del crédito</h2>
-            <div className="grid md:grid-cols-2 gap-3">
-              <Field label="Nombre" reg={form.register("nombre")} />
-              <Field label="Principal (S/)" type="number" step="0.01" reg={form.register("principal", { valueAsNumber: true })} />
-              <Field label="Plazo (meses)" type="number" reg={form.register("nMeses", { valueAsNumber: true })} />
-              <Field label="TEA (proporción)" type="number" step="0.0001" reg={form.register("tea", { valueAsNumber: true })} />
-            </div>
-          </div>
-        )}
+        {/* Contenido */}
+        <div className="bg-[#fafaf7] p-6">
+          <h1 className="text-xl font-semibold">Nueva simulación</h1>
+          <p className="mt-1 text-emerald-800 font-medium">
+            {step === 1 && "Paso 1: Datos del solicitante"}
+            {step === 2 && "Paso 2: Datos de la vivienda y proyecto"}
+            {step === 3 && "Paso 3: Financiamiento y condiciones"}
+            {step === 4 && "Resultados"}
+          </p>
 
-        {step === 2 && (
-          <div className="rounded-2xl border bg-white p-6 grid gap-4">
-            <h2 className="font-semibold">Costos y Seguros</h2>
-            <div className="grid md:grid-cols-2 gap-3">
-              <Field label="Tasa desgravamen mensual" type="number" step="0.000001" reg={form.register("tasaDesgravamenMensual", { valueAsNumber: true })} />
-              <label className="text-sm">
-                Base del seguro
-                <select className="mt-1 w-full border rounded-lg px-3 py-2" {...form.register("baseSeguroDesgravamen")}>
-                  <option value="saldo">saldo</option>
-                  <option value="saldo_promedio">saldo_promedio</option>
-                </select>
-              </label>
-              <Field label="Gastos notariales (S/)" type="number" step="0.01" reg={form.register("gastosNotariales", { valueAsNumber: true })} />
-              <Field label="Gastos registrales (S/)" type="number" step="0.01" reg={form.register("gastosRegistrales", { valueAsNumber: true })} />
-              <Field label="Tasación perito (S/)" type="number" step="0.01" reg={form.register("tasacionPerito", { valueAsNumber: true })} />
-              <label className="text-sm">
-                ITF (0.005% fijo)
-                <input disabled value={ITF} className="mt-1 w-full border rounded-lg px-3 py-2 bg-neutral-100" />
-              </label>
-              <label className="mt-2 flex items-center gap-2 text-sm">
-                <input type="checkbox" {...form.register("financiarGastos")} /> Financiar gastos
-              </label>
-            </div>
-          </div>
-        )}
+          <div className="mt-4 rounded-2xl border bg-white p-5">
+            {step === 1 && (
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="DNI" error={(form.formState.errors as any).dni?.message}>
+                  <input className={INPUT_CLS} {...form.register("dni" as const)} />
+                </Field>
+                <Field label="Nombres" error={(form.formState.errors as any).nombres?.message}>
+                  <input className={INPUT_CLS} {...form.register("nombres" as const)} />
+                </Field>
 
-        {step === 3 && (
-          <div className="rounded-2xl border bg-white p-6 grid gap-4">
-            <h2 className="font-semibold">Periodo de gracia</h2>
-            <div className="grid md:grid-cols-2 gap-3">
-              <Field label="Meses de gracia" type="number" reg={form.register("mesesGracia", { valueAsNumber: true })} />
-              <label className="text-sm">
-                Tipo de gracia
-                <select className="mt-1 w-full border rounded-lg px-3 py-2" {...form.register("tipoGracia")}>
-                  <option value="sin">sin</option>
-                  <option value="parcial">parcial (solo intereses)</option>
-                  <option value="total">total (sin pagos)</option>
-                </select>
-              </label>
-            </div>
-          </div>
-        )}
+                <Field label="Estado civil" error={(form.formState.errors as any).estadoCivil?.message}>
+                  <select className={INPUT_CLS} {...form.register("estadoCivil" as const)}>
+                    <option>Soltero</option>
+                    <option>Casado</option>
+                    <option>Conviviente</option>
+                    <option>Divorciado</option>
+                    <option>Viudo</option>
+                  </select>
+                </Field>
+                <Field label={`Ingreso mensual (${simbolo})`} error={(form.formState.errors as any).ingresoMensual?.message}>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.01"
+                    onKeyDown={blockInvalidNumber}
+                    onWheel={blurOnWheel}
+                    className={INPUT_CLS}
+                    {...form.register("ingresoMensual" as const, { valueAsNumber: true })}
+                  />
+                </Field>
 
-        {step === 4 && (
-          <div className="rounded-2xl border bg-white p-6 grid gap-4">
-            <h2 className="font-semibold">Resumen</h2>
-            <p className="text-sm text-neutral-600">Revisa los datos antes de guardar.</p>
-            <div className="grid md:grid-cols-2 gap-3 text-sm">
-              {Object.entries(form.getValues()).map(([k, v]) => (
-                <div key={k} className="flex justify-between border rounded-lg px-3 py-2 bg-neutral-50">
-                  <span className="text-neutral-600">{k}</span>
-                  <span className="font-medium">{String(v)}</span>
+                <Field label="Dependientes" error={(form.formState.errors as any).dependientes?.message}>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    onKeyDown={blockInvalidNumber}
+                    onWheel={blurOnWheel}
+                    className={INPUT_CLS}
+                    {...form.register("dependientes" as const, { valueAsNumber: true })}
+                  />
+                </Field>
+                <Field label="Correo electrónico" error={(form.formState.errors as any).email?.message}>
+                  <input type="email" className={INPUT_CLS} {...form.register("email" as const)} />
+                </Field>
+
+                <Field label="Teléfono" error={(form.formState.errors as any).telefono?.message}>
+                  <input className={INPUT_CLS} {...form.register("telefono" as const)} />
+                </Field>
+                <Field label="Teléfono (alternativo)">
+                  <input className={INPUT_CLS} {...form.register("telefonoAlt" as const)} />
+                </Field>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="grid gap-3">
+                <div className="grid md:grid-cols-2 gap-3">
+                  <Field label="Tipo de inmueble">
+                    <select className={INPUT_CLS} {...form.register("tipoInmueble" as const)}>
+                      <option>Departamento</option>
+                      <option>Casa</option>
+                      <option>Terreno</option>
+                      <option>Otro</option>
+                    </select>
+                  </Field>
+
+                  <Field label="Departamento">
+                    <select className={INPUT_CLS} {...form.register("departamento" as const)}>
+                      {[
+                        "Lima","Arequipa","Cusco","Piura","La Libertad","Callao","Junín","Lambayeque","Ancash",
+                        "Ica","Tacna","Puno","Loreto","Ucayali","San Martín","Cajamarca","Huánuco","Ayacucho",
+                        "Apurímac","Pasco","Tumbes","Madre de Dios","Moquegua","Huancavelica","Amazonas",
+                      ].map((d) => <option key={d}>{d}</option>)}
+                    </select>
+                  </Field>
                 </div>
-              ))}
+
+                <Field label="Proyecto de vivienda">
+                  <input className={INPUT_CLS} {...form.register("proyecto" as const)} />
+                </Field>
+
+                <Field label={`Precio de venta (${simbolo})`} error={(form.formState.errors as any).precioVenta?.message}>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.01"
+                    onKeyDown={blockInvalidNumber}
+                    onWheel={blurOnWheel}
+                    className={INPUT_CLS}
+                    {...form.register("precioVenta" as const, { valueAsNumber: true })}
+                  />
+                </Field>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="grid gap-3">
+                <div className="grid md:grid-cols-2 gap-3">
+                  <Field label="Moneda">
+                    <div className="flex items-center gap-4 px-1">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="radio" value="PEN" {...form.register("moneda" as const)} /> S/
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="radio" value="USD" {...form.register("moneda" as const)} /> US$
+                      </label>
+                    </div>
+                  </Field>
+
+                  <Field label="Tasa (selecciona tipo)">
+                    <div className="flex items-center gap-4 px-1">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="radio" value="TEA" {...form.register("tipoTasa" as const)} /> TEA
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="radio" value="TNA" {...form.register("tipoTasa" as const)} /> TNA
+                      </label>
+                    </div>
+                  </Field>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-3">
+                  <Field label="Valor de tasa (proporción)">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0.0001}
+                      step="0.0001"
+                      onKeyDown={blockInvalidNumber}
+                      onWheel={blurOnWheel}
+                      className={INPUT_CLS}
+                      {...form.register("tasaValor" as const, { valueAsNumber: true })}
+                    />
+                  </Field>
+                  <Field label="Capitalización (si TNA)">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      step={1}
+                      onKeyDown={blockInvalidNumber}
+                      onWheel={blurOnWheel}
+                      className={INPUT_CLS}
+                      {...form.register("capitalizacion" as const, { valueAsNumber: true })}
+                    />
+                  </Field>
+                  <Field label="Plazo (meses)">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      step={1}
+                      onKeyDown={blockInvalidNumber}
+                      onWheel={blurOnWheel}
+                      className={INPUT_CLS}
+                      {...form.register("plazoMeses" as const, { valueAsNumber: true })}
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-3">
+                  <Field label="Periodo de gracia">
+                    <select className={INPUT_CLS} {...form.register("graciaTipo" as const)}>
+                      <option value="sin">Sin gracia</option>
+                      <option value="parcial">Parcial (solo intereses)</option>
+                      <option value="total">Total (sin pagos)</option>
+                    </select>
+                  </Field>
+                  <Field label="Meses de gracia">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      step={1}
+                      onKeyDown={blockInvalidNumber}
+                      onWheel={blurOnWheel}
+                      className={INPUT_CLS}
+                      {...form.register("graciaMeses" as const, { valueAsNumber: true })}
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid md:grid-cols-3 gap-3">
+                  <Field label={`Desgravamen mensual (${simbolo})`}>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="0.01"
+                      onKeyDown={blockInvalidNumber}
+                      onWheel={blurOnWheel}
+                      className={INPUT_CLS}
+                      {...form.register("desgravamenMensualSoles" as const, { valueAsNumber: true })}
+                    />
+                  </Field>
+                  <Field label={`Administración inicial (${simbolo})`}>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="0.01"
+                      onKeyDown={blockInvalidNumber}
+                      onWheel={blurOnWheel}
+                      className={INPUT_CLS}
+                      {...form.register("adminInicialSoles" as const, { valueAsNumber: true })}
+                    />
+                  </Field>
+                  <Field label={`Cuota inicial (${simbolo})`}>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step="0.01"
+                      onKeyDown={blockInvalidNumber}
+                      onWheel={blurOnWheel}
+                      className={INPUT_CLS}
+                      {...form.register("cuotaInicial" as const, { valueAsNumber: true })}
+                    />
+                  </Field>
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-3">
+                  <Field label="Bono del Buen Pagador">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" {...form.register("bbp" as const)} />
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        step="0.01"
+                        onKeyDown={blockInvalidNumber}
+                        onWheel={blurOnWheel}
+                        className={INPUT_CLS}
+                        placeholder="Monto"
+                        {...form.register("bbpMonto" as const, { valueAsNumber: true })}
+                      />
+                    </div>
+                  </Field>
+                  <Field label="Bono Verde (opcional)">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" {...form.register("bonoVerde" as const)} />
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        step="0.01"
+                        onKeyDown={blockInvalidNumber}
+                        onWheel={blurOnWheel}
+                        className={INPUT_CLS}
+                        placeholder="Monto"
+                        {...form.register("bonoVerdeMonto" as const, { valueAsNumber: true })}
+                      />
+                    </div>
+                  </Field>
+                </div>
+              </div>
+            )}
+
+            {step === 4 && (
+              <ResultsCard
+                pagoMensual={pagoMensual}
+                v={form.getValues() as FormValues}
+              />
+            )}
+
+            {/* Navegación */}
+            <div className="mt-5 flex justify-between">
+              <button type="button" onClick={onBack} disabled={step === 1} className="rounded-lg border px-4 py-2 text-sm disabled:opacity-50">
+                Anterior
+              </button>
+
+              {step < 3 && (
+                <button type="button" onClick={onNext} className="rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm hover:bg-emerald-800">
+                  Siguiente ▸
+                </button>
+              )}
+
+              {step === 3 && (
+                <button type="button" onClick={onCalcular} className="rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm hover:bg-emerald-800">
+                  Calcular
+                </button>
+              )}
+
+              {step === 4 && (
+                <button type="button" onClick={() => setStep(1)} className="rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm hover:bg-emerald-800">
+                  Volver al inicio
+                </button>
+              )}
             </div>
           </div>
-        )}
-
-        <div className="flex justify-between">
-          <button type="button" onClick={back} disabled={step === 1} className="rounded-xl border px-4 py-2 disabled:opacity-50">
-            Atrás
-          </button>
-          {step < 4 ? (
-            <button type="button" onClick={next} className="rounded-xl bg-black text-white px-4 py-2">
-              Siguiente
-            </button>
-          ) : (
-            <button type="submit" className="rounded-xl bg-emerald-600 text-white px-4 py-2">
-              Guardar simulación
-            </button>
-          )}
         </div>
-      </form>
+      </div>
     </section>
   );
 }
 
-// Tipado simple para evitar “implicit any” en Field
-type FieldProps = {
-  label: string;
-  reg: any;
-  type?: string;
-  step?: string;
-};
+/* ====================== Subcomponentes ====================== */
 
-function Field({ label, reg, type = "text", step }: FieldProps) {
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <label className="text-sm">
       {label}
-      <input type={type} step={step} className="mt-1 w-full border rounded-lg px-3 py-2" {...reg} />
+      <div className="mt-1">{children}</div>
+      {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
     </label>
+  );
+}
+
+function ResultsCard({ pagoMensual, v }: { pagoMensual: number | null; v: FormValues }) {
+  const P = Math.max(0, v.precioVenta - v.cuotaInicial - (v.bbp ? v.bbpMonto : 0) - (v.bonoVerde ? v.bonoVerdeMonto : 0));
+  const iMensual = tasaMensual(v.tipoTasa, v.tasaValor, v.capitalizacion);
+  const tasaView = (v.tasaValor * 100).toFixed(2);
+
+  return (
+    <div className="grid place-items-center">
+      <div className="w-full max-w-md bg-emerald-50 rounded-xl p-4 border">
+        <div className="rounded-lg bg-emerald-700 text-white text-center py-2 font-semibold">Resultados</div>
+        <div className="text-center py-5">
+          <div className="text-3xl font-bold text-emerald-800">
+            {pagoMensual != null ? fmtMoney(pagoMensual, v.moneda) : "—"}
+          </div>
+          <div className="text-sm text-neutral-700">Pago mensual (aprox.)</div>
+        </div>
+
+        <div className="bg-white rounded-lg border p-3 text-sm">
+          <Row k="Precio de venta" v={fmtMoney(v.precioVenta, v.moneda)} />
+          <Row k="Cuota inicial" v={fmtMoney(v.cuotaInicial, v.moneda)} />
+          <Row k="Bonos" v={fmtMoney((v.bbp ? v.bbpMonto : 0) + (v.bonoVerde ? v.bonoVerdeMonto : 0), v.moneda)} />
+          <Row k="Principal financiado" v={fmtMoney(P, v.moneda)} />
+          <Row k="Plazo" v={`${v.plazoMeses} meses`} />
+          <Row k="Tasa" v={`${tasaView}% ${v.tipoTasa}`} />
+          <Row k="i mensual" v={`${(iMensual * 100).toFixed(3)}%`} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex justify-between py-1">
+      <span className="text-neutral-600">{k}</span>
+      <span className="font-medium">{v}</span>
+    </div>
   );
 }

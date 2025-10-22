@@ -8,3 +8,9 @@
 
 /* utilidades del proyecto */
 html, body { height: 100%; }
+
+
+/* estilo base de inputs */
+.input {
+  @apply w-full rounded-xl border px-3 py-2 bg-white focus:outline-none focus:ring-2 ring-emerald-200;
+}
