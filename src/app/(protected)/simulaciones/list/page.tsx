@@ -1,156 +1,230 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs, orderBy, query, where, DocumentData } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  Timestamp,
+  type DocumentData,
+  type QueryDocumentSnapshot,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
-import type { Simulacion } from "@/types/simulacion";
-import { formatMoney, formatPercent } from "@/lib/utils/format";
 
-type SimulacionDoc = Simulacion & { id: string };
+/* ===== Tipos ===== */
+type Moneda = "PEN" | "USD";
+type Estado = "Aprobado" | "Rechazado" | "En proceso" | undefined;
 
-export default function SimulacionesListPage() {
+type Simulacion = {
+  id: string;
+  userId: string;
+  createdAt: Timestamp | Date;
+  tcea: number;          // proporción (0.1325 = 13.25%)
+  plazoMeses: number;
+  monto: number;
+  moneda?: Moneda;
+  nombre?: string;
+  estado?: Estado;
+};
+
+/* ===== Helpers ===== */
+function toSimulacion(d: QueryDocumentSnapshot<DocumentData>): Simulacion {
+  const x = d.data();
+  const createdAt =
+    x.createdAt instanceof Timestamp
+      ? x.createdAt
+      : typeof x.createdAt === "number"
+      ? new Date(x.createdAt)
+      : new Date();
+  return {
+    id: d.id,
+    userId: String(x.userId ?? ""),
+    createdAt,
+    tcea: Number(x.tcea ?? 0),
+    plazoMeses: Number(x.plazoMeses ?? 0),
+    monto: Number(x.monto ?? 0),
+    moneda: (x.moneda as Moneda) ?? "PEN",
+    nombre: typeof x.nombre === "string" ? x.nombre : undefined,
+    estado: typeof x.estado === "string" ? (x.estado as Estado) : undefined,
+  };
+}
+
+function fmtMoney(v: number, m: Moneda = "PEN") {
+  return new Intl.NumberFormat("es-PE", {
+    style: "currency",
+    currency: m === "USD" ? "USD" : "PEN",
+    minimumFractionDigits: 2,
+  }).format(v);
+}
+
+function fmtDate(t: Timestamp | Date) {
+  const d = t instanceof Timestamp ? t.toDate() : t;
+  return new Intl.DateTimeFormat("es-PE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function Badge({ estado }: { estado: Estado }) {
+  const map: Record<Exclude<Estado, undefined>, string> = {
+    Aprobado: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    "En proceso": "bg-amber-100 text-amber-800 border-amber-200",
+    Rechazado: "bg-rose-100 text-rose-800 border-rose-200",
+  };
+  if (!estado) return <span className="text-neutral-500">—</span>;
+  return (
+    <span className={`text-xs px-2 py-1 rounded-full border ${map[estado]}`}>
+      {estado}
+    </span>
+  );
+}
+
+/* ===== Página ===== */
+export default function HistorialPage() {
   const { user } = useAuth();
-  const [rows, setRows] = useState<SimulacionDoc[]>([]);
+  const [rows, setRows] = useState<Simulacion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string>("");
+  const [qtext, setQtext] = useState("");
+  const [fEstado, setFEstado] = useState<Estado | "Todos">("Todos");
 
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!user) return;
-      try {
-        const qref = query(
-          collection(db, "simulaciones"),
-          where("uid", "==", user.uid),
-          orderBy("createdAt", "desc")
+    if (!user) return;
+    setLoading(true);
+    setErr("");
+
+    const col = collection(db, "simulaciones");
+    // Requiere índice: userId ASC + createdAt DESC (ya te pasé el indexes.json)
+    const qy = query(col, where("userId", "==", user.uid), orderBy("createdAt", "desc"));
+
+    const unsub = onSnapshot(
+      qy,
+      (snap) => {
+        setRows(snap.docs.map(toSimulacion));
+        setLoading(false);
+      },
+      (e) => {
+        console.error(e);
+        setErr(
+          e?.message?.includes("insufficient permissions")
+            ? "No tienes permisos para leer el historial. Revisa tus Reglas de Firestore."
+            : e?.message ?? "Error al leer datos"
         );
-        const snap = await getDocs(qref);
-        const list: SimulacionDoc[] = snap.docs.map((d) => {
-          const x = d.data() as DocumentData;
-          return {
-            id: d.id,
-            uid: String(x.uid),
-            clienteId: x.clienteId ?? null,
-            unidadId: x.unidadId ?? null,
-            entidadId: x.entidadId ?? null,
-
-            moneda: (x.moneda ?? "PEN") as Simulacion["moneda"],
-            tipoTasa: (x.tipoTasa ?? "TEA") as Simulacion["tipoTasa"],
-            tasaValor: Number(x.tasaValor ?? 0),
-            capitalizacion: x.capitalizacion ? Number(x.capitalizacion) : undefined,
-            plazoMeses: Number(x.plazoMeses ?? 0),
-            graciaTipo: (x.graciaTipo ?? "sin") as Simulacion["graciaTipo"],
-            graciaMeses: Number(x.graciaMeses ?? 0),
-
-            precioVenta: Number(x.precioVenta ?? 0),
-            cuotaInicial: Number(x.cuotaInicial ?? 0),
-            bonos: Array.isArray(x.bonos) ? x.bonos : [],
-
-            itf: Number(x.itf ?? 0),
-            costosIniciales: x.costosIniciales ? Number(x.costosIniciales) : undefined,
-            gastosNotariales: x.gastosNotariales ? Number(x.gastosNotariales) : undefined,
-            gastosRegistrales: x.gastosRegistrales ? Number(x.gastosRegistrales) : undefined,
-            tasacionPerito: x.tasacionPerito ? Number(x.tasacionPerito) : undefined,
-            adminInicialSoles: x.adminInicialSoles ? Number(x.adminInicialSoles) : undefined,
-
-            seguro: x.seguro ?? undefined,
-            cobraSeguroEnGraciaTotal: x.cobraSeguroEnGraciaTotal ?? undefined,
-
-            tcea: x.tcea ?? null,
-            tirMensual: x.tirMensual ?? null,
-            vanMensual: typeof x.vanMensual === "number" ? x.vanMensual : undefined,
-            totInteres: typeof x.totInteres === "number" ? x.totInteres : undefined,
-            totSeguros: typeof x.totSeguros === "number" ? x.totSeguros : undefined,
-            totITF: typeof x.totITF === "number" ? x.totITF : undefined,
-            desembolsoNeto: typeof x.desembolsoNeto === "number" ? x.desembolsoNeto : undefined,
-            pagoConstante: typeof x.pagoConstante === "number" ? x.pagoConstante : undefined,
-
-            createdAt: x.createdAt,
-            updatedAt: x.updatedAt,
-          };
-        });
-
-        // Orden de respaldo por timestamp si faltara el índice
-        list.sort((a, b) => {
-          const ams = a.createdAt?.toMillis?.() ?? 0;
-          const bms = b.createdAt?.toMillis?.() ?? 0;
-          return bms - ams;
-        });
-
-        if (alive) setRows(list);
-      } finally {
-        if (alive) setLoading(false);
+        setLoading(false);
       }
-    })();
-    return () => {
-      alive = false;
-    };
+    );
+    return () => unsub();
   }, [user]);
 
-  if (!user) {
-    return <p className="text-sm text-neutral-600">Inicia sesión para ver tus simulaciones.</p>;
-  }
-
-  if (loading) {
-    return <p className="text-sm text-neutral-600">Cargando simulaciones…</p>;
-  }
-
-  if (rows.length === 0) {
-    return (
-      <div className="rounded-xl border bg-white p-6 text-center text-sm text-neutral-600">
-        No tienes simulaciones aún.
-      </div>
-    );
-  }
+  const filtered = useMemo(() => {
+    const s = qtext.trim().toLowerCase();
+    return rows.filter((r) => {
+      const okEstado = fEstado === "Todos" ? true : r.estado === fEstado;
+      if (!s) return okEstado;
+      const title = (r.nombre ?? `Simulación #${r.id.slice(0, 6).toUpperCase()}`).toLowerCase();
+      const id6 = r.id.slice(0, 6).toLowerCase();
+      return okEstado && (title.includes(s) || id6.includes(s));
+    });
+  }, [rows, qtext, fEstado]);
 
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-semibold">Mis simulaciones</h1>
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-xl font-semibold">Historial</h1>
+          <p className="text-sm text-neutral-600">Tus simulaciones guardadas</p>
+        </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {rows.map((r) => {
-          const titulo = `Simulación ${r.id.slice(0, 6)}…`;
-          const tasaStr =
-            r.tipoTasa === "TEA"
-              ? `${formatPercent(r.tasaValor, 2)} TEA`
-              : `${formatPercent(r.tasaValor, 2)} TNA c/${r.capitalizacion ?? 12}`;
-          const plazoStr = `${r.plazoMeses} meses`;
-          const moneda = r.moneda;
-          const created =
-            r.createdAt?.toDate?.()
-              ? r.createdAt.toDate().toLocaleDateString("es-PE")
-              : "—";
-          const pago = typeof r.pagoConstante === "number" ? formatMoney(r.pagoConstante, moneda) : "—";
-          const tceaStr = typeof r.tcea === "number" ? formatPercent(r.tcea, 2) : "—";
+        <div className="flex gap-2">
+          <input
+            value={qtext}
+            onChange={(e) => setQtext(e.target.value)}
+            placeholder="Buscar por nombre o ID…"
+            className="rounded-xl border px-3 py-2 text-sm"
+          />
+          <select
+            value={fEstado ?? "Todos"}
+            onChange={(e) => setFEstado((e.target.value as Estado | "Todos") || "Todos")}
+            className="rounded-xl border px-3 py-2 text-sm"
+          >
+            <option value="Todos">Todos</option>
+            <option value="Aprobado">Aprobado</option>
+            <option value="En proceso">En proceso</option>
+            <option value="Rechazado">Rechazado</option>
+          </select>
+          <Link
+            href="/simulaciones/nueva"
+            className="rounded-lg bg-emerald-700 text-white px-3 py-2 text-sm hover:bg-emerald-800"
+          >
+            Nueva simulación
+          </Link>
+        </div>
+      </div>
 
-          return (
-            <Link
-              key={r.id}
-              href={`/ (protected)/simulaciones/${r.id}`.replace(/\s/g, "")}
-              className="rounded-2xl border bg-white p-4 flex flex-col hover:shadow-sm transition"
-            >
-              <div className="flex-1">
-                <div className="font-medium">{titulo}</div>
-                <div className="text-sm text-neutral-600 mt-1">
-                  {plazoStr} · {tasaStr}
-                </div>
-                <div className="text-sm text-neutral-600">Creada: {created}</div>
-              </div>
+      {err && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div>}
 
-              <div className="mt-3 border-t pt-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-neutral-600">Cuota aprox.</span>
-                  <span className="font-medium">{pago}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-neutral-600">TCEA</span>
-                  <span className="font-medium">{tceaStr}</span>
-                </div>
-              </div>
-            </Link>
-          );
-        })}
+      <div className="rounded-2xl border bg-white overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-neutral-600">
+            <tr className="[&>th]:px-3 [&>th]:py-3 border-b">
+              <th>Título</th>
+              <th className="whitespace-nowrap">Fecha</th>
+              <th className="whitespace-nowrap">Monto</th>
+              <th className="whitespace-nowrap">TCEA</th>
+              <th className="whitespace-nowrap">Plazo</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-6 text-center text-neutral-600">
+                  Cargando…
+                </td>
+              </tr>
+            )}
+
+            {!loading && filtered.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-6 text-center text-neutral-600">
+                  No hay simulaciones.
+                </td>
+              </tr>
+            )}
+
+            {filtered.map((r) => {
+              const titulo = r.nombre ?? `Simulación #${r.id.slice(0, 6).toUpperCase()}`;
+              const fecha = fmtDate(r.createdAt);
+              const tcea = `${(r.tcea * 100).toFixed(2)}%`;
+              return (
+                <tr key={r.id} className="[&>td]:px-3 [&>td]:py-3 border-b last:border-0">
+                  <td className="font-medium">{titulo}</td>
+                  <td>{fecha}</td>
+                  <td className="whitespace-nowrap">{fmtMoney(r.monto, r.moneda ?? "PEN")}</td>
+                  <td>{tcea}</td>
+                  <td className="whitespace-nowrap">{r.plazoMeses} m</td>
+                  <td>
+                    <Badge estado={r.estado} />
+                  </td>
+                  <td className="text-right">
+                    <Link
+                      href={`/simulaciones/${r.id}`}
+                      className="text-emerald-700 hover:underline"
+                    >
+                      Ver
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
   );
