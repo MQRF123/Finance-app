@@ -1,27 +1,24 @@
-import { generarCronograma } from "./cronograma";
+// src/lib/finance/tcea.ts
+// Cálculo de TCEA a partir del flujo mensual del cliente (t0, t1, ..., tn)
 
-function irrMonthly(cashflows: number[], guess = 0.01): number {
-  // Newton-Raphson simple con derivada numérica
-  let r = guess;
-  for (let iter = 0; iter < 100; iter++) {
-    let npv = 0, d = 0, denom = 1;
-    for (let t = 0; t < cashflows.length; t++) {
-      npv += cashflows[t] / denom;
-      d += -t * cashflows[t] / denom;
-      denom *= (1 + r);
-    }
-    if (Math.abs(npv) < 1e-12) break;
-    const step = npv / d;
-    r -= step;
-    if (!isFinite(r)) { r = guess; break; }
-    if (Math.abs(step) < 1e-12) break;
+import { irr } from "./cashflows";
+import { toEffectiveAnnualFromMonthly } from "./rates";
+
+/**
+ * Retorna la TCEA (efectiva anual) a partir del flujo mensual del cliente.
+ * @param cashflow Arreglo de flujos mensuales: t0 (positivo, desembolso neto) y pagos negativos.
+ * @param guess Valor inicial para IRR (opcional, por defecto 0.01 = 1%).
+ * @returns TCEA (proporción anual), o null si no existe IRR (flujo sin cambio de signo, etc).
+ */
+export function tceaFromCashflow(
+  cashflow: number[],
+  guess: number = 0.01
+): number | null {
+  if (!Array.isArray(cashflow) || cashflow.length === 0) return null;
+  try {
+    const r = irr(cashflow, guess); // tasa mensual
+    return Number.isFinite(r) ? toEffectiveAnnualFromMonthly(r) : null;
+  } catch {
+    return null;
   }
-  return r;
-}
-
-export function calcularTCEA(input: any) {
-  const { flujos } = generarCronograma(input);
-  const irr_m = irrMonthly(flujos, 0.01);
-  const tcea = Math.pow(1 + irr_m, 12) - 1;
-  return { tcea, irr_m };
 }
