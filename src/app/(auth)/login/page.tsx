@@ -1,37 +1,63 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { FirebaseError } from "firebase/app";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
+import { auth } from "@/lib/firebase";
 
-function isFirebaseError(e: unknown): e is FirebaseError {
-  return typeof e === "object" && e !== null && "code" in e;
+function mapAuthError(e: FirebaseError | Error): string {
+  const code = (e as FirebaseError).code ?? "";
+  switch (code) {
+    case "auth/invalid-email":
+      return "El correo no es válido.";
+    case "auth/user-not-found":
+      return "No existe una cuenta con ese correo.";
+    case "auth/wrong-password":
+      return "Contraseña incorrecta.";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.please-pass-a-valid-api-key.":
+      return "Tu API key de Firebase no es válida. Revisa tus variables de entorno.";
+    case "auth/unauthorized-domain":
+      return "Dominio no autorizado en Firebase Auth.";
+    default:
+      return `${code ? code + ": " : ""}${e.message}`;
+  }
 }
 
 export default function LoginPage() {
-  const [email, setEmail] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErr("");
+    setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-    } catch (e: unknown) {
-      setErr(isFirebaseError(e) ? `${e.code}: ${e.message}` : "No se pudo iniciar sesión.");
+      router.replace("/dashboard");
+    } catch (e) {
+      setErr(mapAuthError(e as FirebaseError));
+    } finally {
+      setLoading(false);
     }
   };
 
   const onGoogle = async () => {
     setErr("");
+    setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-    } catch (e: unknown) {
-      setErr(isFirebaseError(e) ? `${e.code}: ${e.message}` : "No se pudo iniciar con Google.");
+      router.replace("/dashboard");
+    } catch (e) {
+      setErr(mapAuthError(e as FirebaseError));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -40,6 +66,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm rounded-2xl border bg-white p-6 space-y-4">
         <h1 className="text-xl font-semibold">Iniciar sesión</h1>
         {err && <p className="text-sm text-red-600">{err}</p>}
+
         <form onSubmit={onSubmit} className="space-y-3">
           <label className="text-sm block">
             Correo
@@ -61,20 +88,25 @@ export default function LoginPage() {
           </label>
           <button
             type="submit"
-            className="w-full rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm hover:bg-emerald-800"
+            disabled={loading}
+            className="w-full rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm hover:bg-emerald-800 disabled:opacity-50"
           >
             Entrar
           </button>
         </form>
+
         <button
           onClick={onGoogle}
-          className="w-full rounded-lg border px-4 py-2 text-sm hover:bg-neutral-50"
+          disabled={loading}
+          className="w-full rounded-lg border px-4 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
         >
           Continuar con Google
         </button>
+
         <p className="text-xs text-neutral-600">
           ¿No tienes cuenta?{" "}
-          <Link className="text-emerald-700 font-medium" href="/(auth)/register">
+          {/* 🔥 IMPORTANTE: URL correcta sin el grupo (auth) */}
+          <Link className="text-emerald-700 font-medium" href="/register">
             Regístrate
           </Link>
         </p>

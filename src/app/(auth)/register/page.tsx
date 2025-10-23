@@ -1,27 +1,47 @@
 "use client";
 
 import { useState } from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
-import { FirebaseError } from "firebase/app";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
+import { auth } from "@/lib/firebase";
 
-function isFirebaseError(e: unknown): e is FirebaseError {
-  return typeof e === "object" && e !== null && "code" in e;
+function mapAuthError(e: FirebaseError | Error): string {
+  const code = (e as FirebaseError).code ?? "";
+  switch (code) {
+    case "auth/email-already-in-use":
+      return "Ese correo ya está en uso.";
+    case "auth/invalid-email":
+      return "El correo no es válido.";
+    case "auth/weak-password":
+      return "La contraseña es muy débil (mín. 6 caracteres).";
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.please-pass-a-valid-api-key.":
+      return "Tu API key de Firebase no es válida. Revisa tus variables de entorno.";
+    default:
+      return `${code ? code + ": " : ""}${e.message}`;
+  }
 }
 
 export default function RegisterPage() {
-  const [email, setEmail] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErr("");
+    setLoading(true);
     try {
       await createUserWithEmailAndPassword(auth, email, password);
-    } catch (e: unknown) {
-      setErr(isFirebaseError(e) ? `${e.code}: ${e.message}` : "No se pudo crear la cuenta.");
+      router.replace("/dashboard");
+    } catch (e) {
+      setErr(mapAuthError(e as FirebaseError));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -30,6 +50,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-sm rounded-2xl border bg-white p-6 space-y-4">
         <h1 className="text-xl font-semibold">Crear cuenta</h1>
         {err && <p className="text-sm text-red-600">{err}</p>}
+
         <form onSubmit={onSubmit} className="space-y-3">
           <label className="text-sm block">
             Correo
@@ -51,14 +72,17 @@ export default function RegisterPage() {
           </label>
           <button
             type="submit"
-            className="w-full rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm hover:bg-emerald-800"
+            disabled={loading}
+            className="w-full rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm hover:bg-emerald-800 disabled:opacity-50"
           >
-            Registrarme
+            Crear cuenta
           </button>
         </form>
+
         <p className="text-xs text-neutral-600">
           ¿Ya tienes cuenta?{" "}
-          <Link className="text-emerald-700 font-medium" href="/(auth)/login">
+          {/* 🔥 IMPORTANTE: URL correcta sin el grupo (auth) */}
+          <Link className="text-emerald-700 font-medium" href="/login">
             Inicia sesión
           </Link>
         </p>
