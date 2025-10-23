@@ -1,4 +1,7 @@
 "use client";
+import RequireAuth from './RequireAuth';
+
+
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
