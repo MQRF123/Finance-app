@@ -1,12 +1,9 @@
-"use client";
-import { Toaster } from "sonner";
-import { AuthProvider } from "@/context/auth-context";
+'use client';
 
-export function Providers({ children }: { children: React.ReactNode }) {
-  return (
-    <AuthProvider>
-      {children}
-      <Toaster richColors />
-    </AuthProvider>
-  );
+// ⚠️ Deja este archivo mínimo mientras compilamos en Vercel.
+// Si tenías AuthProvider u otros, COMÉNTALOS temporalmente aquí.
+// Cuando compile, los volvemos a activar.
+
+export default function Providers({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }
