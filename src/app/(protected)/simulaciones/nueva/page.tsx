@@ -13,26 +13,16 @@ type TipoTasa = "TEA" | "TNA";
 type TipoGracia = "sin" | "total" | "parcial";
 
 type FormVals = {
-  // Paso 1
-  dni: string;
-  nombres: string;
-  estadoCivil: "Soltero" | "Casado" | "Conviviente" | "Divorciado" | "Viudo";
-  ingresoMensual: number;
-  dependientes: number;
-  email: string;
-  telefono: string;
-  telefonoAlt?: string;
-
-  // Paso 2
+  // Paso 1 (Vivienda / selección)
   tipoInmueble: "Casa" | "Departamento" | "Terreno" | "Otro";
   departamento: string;
   proyecto: string;
   precioVenta: number;
 
-  // Paso 3
+  // Paso 2 (Financiamiento y condiciones)
   moneda: Moneda;
   tipoTasa: TipoTasa;
-  tasaValor: number;        // proporción (0.1 = 10%)
+  tasaValor: number;        // proporción (0.10 = 10%)
   capitalizacion: number;   // si TNA (mínimo 1)
   plazoMeses: number;       // mínimo 1
   tipoGracia: TipoGracia;
@@ -41,10 +31,22 @@ type FormVals = {
   adminInicial: number;     // pago único
   cuotaInicial: number;
 
+  // Bonos
   bbp: boolean;
   bbpMonto: number;
   bonoVerde: boolean;
   bonoVerdeMonto: number;
+  techoPropio: boolean;       // nuevo: marca BTP
+  techoPropioMonto: number;   // lo usaremos cuando definamos el Word
+};
+
+type Casa = {
+  id: string;
+  titulo: string;
+  precio: number; // S/
+  m2: number;
+  eco: boolean;
+  distrito: string;
 };
 
 /* ============== Helpers y estilos ============== */
@@ -53,10 +55,10 @@ const INPUT =
 
 // Números seguros >= min
 const toNumber = (v: unknown, min = 0) => {
-  if (typeof v === "number") return Math.max(min, isFinite(v) ? v : 0);
+  if (typeof v === "number") return Math.max(min, Number.isFinite(v) ? v : 0);
   if (typeof v === "string") {
     const n = parseFloat(v.replace(",", "."));
-    return Math.max(min, isFinite(n) ? n : 0);
+    return Math.max(min, Number.isFinite(n) ? n : 0);
   }
   return min;
 };
@@ -72,10 +74,10 @@ const blurOnWheel = (e: React.WheelEvent<HTMLInputElement>) => {
 };
 
 function tasaMensual(tipo: TipoTasa, v: number, cap: number) {
-  v = Math.max(0, v);
-  if (tipo === "TEA") return Math.pow(1 + v, 1 / 12) - 1;
+  const vPos = Math.max(0, v);
+  if (tipo === "TEA") return Math.pow(1 + vPos, 1 / 12) - 1;
   const c = Math.max(1, cap);
-  const iea = Math.pow(1 + v / c, c) - 1;
+  const iea = Math.pow(1 + vPos / c, c) - 1;
   return Math.pow(1 + iea, 1 / 12) - 1;
 }
 
@@ -88,21 +90,13 @@ function fmtMoneda(v: number, m: Moneda) {
 }
 
 const defaultValues: FormVals = {
-  // 1
-  dni: "",
-  nombres: "",
-  estadoCivil: "Soltero",
-  ingresoMensual: 0,
-  dependientes: 0,
-  email: "",
-  telefono: "",
-  telefonoAlt: "",
-  // 2
-  tipoInmueble: "Departamento",
+  // Vivienda / proyecto
+  tipoInmueble: "Casa",
   departamento: "Lima",
   proyecto: "",
   precioVenta: 0,
-  // 3
+
+  // Financiamiento
   moneda: "PEN",
   tipoTasa: "TEA",
   tasaValor: 0.1,
@@ -113,27 +107,51 @@ const defaultValues: FormVals = {
   desgravamenMensualSoles: 0,
   adminInicial: 0,
   cuotaInicial: 0,
+
+  // Bonos
   bbp: false,
   bbpMonto: 0,
   bonoVerde: false,
   bonoVerdeMonto: 0,
+  techoPropio: false,
+  techoPropioMonto: 0,
 };
 
 /* ============== Página ============== */
 export default function NuevaSimulacionPage() {
   const { user } = useAuth();
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [msg, setMsg] = useState("");
+  const [selCasa, setSelCasa] = useState<string | null>(null);
 
   const form = useForm<FormVals>({ defaultValues, mode: "onTouched" });
 
+  // Catálogo (estático, razonable y sin SSR randomness)
+  const casas: Casa[] = useMemo(
+    () => [
+      { id: "c1", titulo: "Casa Miraflores", precio: 250000, m2: 118, eco: true,  distrito: "Miraflores" },
+      { id: "c2", titulo: "Casa Surco",       precio: 235000, m2: 112, eco: false, distrito: "Santiago de Surco" },
+      { id: "c3", titulo: "Casa Chorrillos",  precio: 199000, m2: 98,  eco: true,  distrito: "Chorrillos" },
+      { id: "c4", titulo: "Casa San Miguel",  precio: 185000, m2: 86,  eco: false, distrito: "San Miguel" },
+      { id: "c5", titulo: "Casa Comas",       precio: 150000, m2: 76,  eco: false, distrito: "Comas" },
+      { id: "c6", titulo: "Casa Magdalena",   precio: 210000, m2: 94,  eco: true,  distrito: "Magdalena del Mar" },
+      { id: "c7", titulo: "Casa Ate",         precio: 165000, m2: 80,  eco: false, distrito: "Ate" },
+      { id: "c8", titulo: "Casa San Borja",   precio: 245000, m2: 120, eco: true,  distrito: "San Borja" },
+    ],
+    []
+  );
+
+  // Observados/calculados
   const moneda = form.watch("moneda");
   const simbolo = useMemo(() => (moneda === "PEN" ? "S/" : "US$"), [moneda]);
-
   const vals = form.watch();
 
-  // Bonos y principal
-  const bonos = (vals.bbp ? vals.bbpMonto : 0) + (vals.bonoVerde ? vals.bonoVerdeMonto : 0);
+  // Bonos y principal (por ahora BTP no afecta hasta definir monto; lo dejamos preparado)
+  const bonos =
+    (vals.bbp ? vals.bbpMonto : 0) +
+    (vals.bonoVerde ? vals.bonoVerdeMonto : 0) +
+    (vals.techoPropio ? vals.techoPropioMonto : 0);
+
   const principal = Math.max(0, vals.precioVenta - vals.cuotaInicial - bonos);
 
   // Tasas
@@ -145,13 +163,13 @@ export default function NuevaSimulacionPage() {
   const { pagoGracia, pagoRegular, mesesAmort } = useMemo(() => {
     const mGr = Math.max(0, Math.min(vals.mesesGracia, vals.plazoMeses - 1));
     let amortMeses = vals.plazoMeses;
-    let pago1 = 0; // pago durante gracia
+    let pago1 = 0;
     let P = principal;
 
     if (vals.tipoGracia === "total" && mGr > 0) {
       P = principal * Math.pow(1 + i, mGr); // capitaliza interés
       amortMeses = Math.max(1, vals.plazoMeses - mGr);
-      pago1 = vals.desgravamenMensualSoles; // si quieres mostrar pago en gracia total
+      pago1 = vals.desgravamenMensualSoles; // durante gracia total mostramos seguro (si aplica)
     } else if (vals.tipoGracia === "parcial" && mGr > 0) {
       pago1 = principal * i + vals.desgravamenMensualSoles; // interés + seguro
       amortMeses = Math.max(1, vals.plazoMeses - mGr);
@@ -168,28 +186,41 @@ export default function NuevaSimulacionPage() {
     return { pagoGracia: pago1, pagoRegular: pago2, mesesAmort: amortMeses };
   }, [vals.tipoGracia, vals.mesesGracia, vals.plazoMeses, vals.desgravamenMensualSoles, principal, i]);
 
-  // Validación por paso (sin setValue para evitar conflicto de tipos)
-  const goNext = async () => {
-    // Reglas simples por paso
-    if (step === 2) {
-      if (principal <= 0) {
-        setMsg("El principal financiado debe ser mayor a 0 (revisa precio, cuota inicial y bonos).");
+  // Selección de casa: setea proyecto, precio, tipo y bonoVerde según eco
+  const seleccionarCasa = (c: Casa) => {
+    setSelCasa(c.id);
+    form.setValue("proyecto", c.titulo);
+    form.setValue("tipoInmueble", "Casa");
+    form.setValue("departamento", "Lima");
+    form.setValue("precioVenta", c.precio);
+    form.setValue("bonoVerde", c.eco);
+    if (!c.eco) form.setValue("bonoVerdeMonto", 0);
+  };
+
+  // Validación por paso (sin setValue masivo)
+  const goNext = () => {
+    if (step === 1) {
+      if (!selCasa) {
+        setMsg("Selecciona una casa para continuar.");
+        return;
+      }
+      if (vals.precioVenta <= 0) {
+        setMsg("El precio de venta debe ser mayor a 0.");
         return;
       }
     }
-    if (step === 3) {
+    if (step === 2) {
       if (vals.mesesGracia >= vals.plazoMeses) {
         setMsg("Los meses de gracia deben ser menores al plazo.");
         return;
       }
     }
-
     setMsg("");
-    setStep((s) => (Math.min(4, s + 1) as 1 | 2 | 3 | 4));
+    setStep((s) => (Math.min(3, s + 1) as 1 | 2 | 3));
   };
 
-  const goBack = () => setStep((s) => (Math.max(1, s - 1) as 1 | 2 | 3 | 4));
-  const onCalcular = () => setStep(4);
+  const goBack = () => setStep((s) => (Math.max(1, s - 1) as 1 | 2 | 3));
+  const onCalcular = () => setStep(3);
 
   const onGuardar = async () => {
     setMsg("");
@@ -203,11 +234,11 @@ export default function NuevaSimulacionPage() {
         createdAt: serverTimestamp(),
 
         // Claves para dashboard/historial
-        tcea: tea, // aprox
+        tcea: tea, // aprox (luego TCEA real con costos/bonos del Word)
         plazoMeses: vals.plazoMeses,
         monto: principal,
         moneda: vals.moneda,
-        nombre: vals.proyecto || vals.nombres || null,
+        nombre: vals.proyecto || null,
         estado: "En proceso",
 
         // Resumen útil
@@ -224,9 +255,11 @@ export default function NuevaSimulacionPage() {
           pagoGracia,
           pagoRegular,
           mesesAmort,
+          eco: selCasa ? casas.find((x) => x.id === selCasa)?.eco === true : false,
+          techoPropio: vals.techoPropio,
         },
 
-        // Todo el formulario (opcional)
+        // Form completo (para edición futura)
         form: vals,
       });
       setMsg("✔ Simulación guardada. La verás en Dashboard e Historial.");
@@ -241,13 +274,12 @@ export default function NuevaSimulacionPage() {
   /* ================== UI ================== */
   return (
     <div className="grid lg:grid-cols-[280px_1fr] gap-5">
-      {/* Sidebar de pasos */}
+      {/* Sidebar de pasos (3 pasos) */}
       <aside className="rounded-2xl bg-emerald-800 text-white p-4 space-y-3">
         {[
-          { n: 1, t: "Solicitante" },
-          { n: 2, t: "Vivienda y\nproyecto" },
-          { n: 3, t: "Financiamiento\ny condiciones" },
-          { n: 4, t: "Resultados" },
+          { n: 1, t: "Selecciona\nla vivienda" },
+          { n: 2, t: "Financiamiento\ny condiciones" },
+          { n: 3, t: "Resultados" },
         ].map((it) => (
           <div
             key={it.n}
@@ -269,67 +301,66 @@ export default function NuevaSimulacionPage() {
       <section className="space-y-4">
         <h1 className="text-xl font-semibold">Nueva simulación</h1>
 
-        {/* Paso 1 */}
+        {/* Paso 1: Selección de vivienda */}
         {step === 1 && (
           <>
-            <div className="text-sm text-emerald-900 font-medium">Paso 1: Datos del solicitante</div>
-            <div className="rounded-2xl border bg-white p-4 space-y-3">
+            <div className="text-sm text-emerald-900 font-medium">Paso 1: Elige tu vivienda</div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {casas.map((c) => {
+                const active = selCasa === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => seleccionarCasa(c)}
+                    className={`text-left rounded-2xl border bg-white p-4 transition
+                      ${active ? "ring-2 ring-emerald-500 border-emerald-500" : "hover:shadow-sm"}`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="font-medium">{c.titulo}</div>
+                      {c.eco && (
+                        <span className="text-[10px] rounded-full bg-emerald-100 text-emerald-700 px-2 py-1 border border-emerald-200">
+                          Ecofriendly
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2 text-2xl font-bold">{fmtMoneda(c.precio, "PEN")}</div>
+                    <div className="text-sm text-neutral-600 mt-1">{c.m2} m² · {c.distrito}</div>
+                    {active && <div className="text-xs text-emerald-700 mt-2">Seleccionada</div>}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="rounded-2xl border bg-white p-4">
               <div className="grid md:grid-cols-2 gap-3">
                 <label className="text-sm">
-                  DNI
-                  <input className={INPUT} {...form.register("dni")} />
+                  Proyecto seleccionado
+                  <input className={INPUT} readOnly {...form.register("proyecto")} />
                 </label>
                 <label className="text-sm">
-                  Nombres
-                  <input className={INPUT} {...form.register("nombres")} />
-                </label>
-
-                <label className="text-sm">
-                  Estado civil
-                  <select className={INPUT} {...form.register("estadoCivil")}>
-                    {["Soltero", "Casado", "Conviviente", "Divorciado", "Viudo"].map((x) => (
-                      <option key={x} value={x}>
-                        {x}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm">
-                  Ingreso mensual ({simbolo})
+                  Precio de venta (S/)
                   <input
                     type="number"
                     min={0}
                     className={INPUT}
                     onWheel={blurOnWheel}
                     onKeyDown={preventMinus}
-                    {...form.register("ingresoMensual", { setValueAs: (v) => toNumber(v, 0) })}
+                    {...form.register("precioVenta", { setValueAs: (v) => toNumber(v, 0) })}
                   />
                 </label>
 
-                <label className="text-sm">
-                  Dependientes
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    className={INPUT}
-                    onWheel={blurOnWheel}
-                    onKeyDown={preventMinus}
-                    {...form.register("dependientes", { setValueAs: (v) => toInt(v, 0) })}
-                  />
-                </label>
-                <label className="text-sm">
-                  Correo electrónico
-                  <input className={INPUT} type="email" {...form.register("email")} />
+                {/* Bono Techo Propio (solo marca intención; monto lo agregamos después) */}
+                <label className="text-sm flex items-center gap-2">
+                  <input type="checkbox" {...form.register("techoPropio")} />
+                  <span>Aplicar Bono Techo Propio</span>
                 </label>
 
-                <label className="text-sm">
-                  Teléfono
-                  <input className={INPUT} {...form.register("telefono")} />
-                </label>
-                <label className="text-sm">
-                  Teléfono (alternativo)
-                  <input className={INPUT} {...form.register("telefonoAlt")} />
+                {/* Bono Verde: se autoconfigura con la selección eco; el monto se define en el paso 2 */}
+                <label className="text-sm flex items-center gap-2">
+                  <input type="checkbox" disabled checked={vals.bonoVerde} readOnly />
+                  <span>Bono Verde (según vivienda ecofriendly)</span>
                 </label>
               </div>
 
@@ -342,62 +373,21 @@ export default function NuevaSimulacionPage() {
                 </button>
               </div>
             </div>
+
+            {msg && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 mt-2">
+                {msg}
+              </div>
+            )}
           </>
         )}
 
-        {/* Paso 2 */}
+        {/* Paso 2: Financiamiento y condiciones (igual que antes) */}
         {step === 2 && (
           <>
-            <div className="text-sm text-emerald-900 font-medium">Paso 2: Datos de la vivienda y proyecto</div>
-            <div className="rounded-2xl border bg-white p-4 space-y-3">
-              <div className="grid md:grid-cols-2 gap-3">
-                <label className="text-sm">
-                  Tipo de inmueble
-                  <select className={INPUT} {...form.register("tipoInmueble")}>
-                    {["Casa", "Departamento", "Terreno", "Otro"].map((x) => (
-                      <option key={x}>{x}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="text-sm">
-                  Departamento
-                  <input className={INPUT} {...form.register("departamento")} />
-                </label>
-
-                <label className="md:col-span-2 text-sm">
-                  Proyecto de vivienda
-                  <input className={INPUT} {...form.register("proyecto")} />
-                </label>
-
-                <label className="md:col-span-2 text-sm">
-                  Precio de venta ({simbolo})
-                  <input
-                    type="number"
-                    min={0}
-                    className={INPUT}
-                    onWheel={blurOnWheel}
-                    onKeyDown={preventMinus}
-                    {...form.register("precioVenta", { setValueAs: (v) => toNumber(v, 0) })}
-                  />
-                </label>
-              </div>
-
-              <div className="flex justify-between pt-2">
-                <button onClick={goBack} className="rounded-lg border px-4 py-2 text-sm">
-                  Anterior
-                </button>
-                <button onClick={goNext} className="rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm">
-                  Siguiente ▸
-                </button>
-              </div>
+            <div className="text-sm text-emerald-900 font-medium">
+              Paso 2: Financiamiento y condiciones
             </div>
-          </>
-        )}
-
-        {/* Paso 3 */}
-        {step === 3 && (
-          <>
-            <div className="text-sm text-emerald-900 font-medium">Paso 3: Financiamiento y condiciones</div>
             <div className="rounded-2xl border bg-white p-4 space-y-3">
               <div className="grid md:grid-cols-2 gap-3">
                 <div className="text-sm">
@@ -525,7 +515,7 @@ export default function NuevaSimulacionPage() {
                   />
                 </label>
 
-                {/* Bonos */}
+                {/* Bonos: montos se siguen configurando aquí */}
                 <div className="md:col-span-2 grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3 items-end">
                   <label className="text-sm">
                     <span className="block">Bono del Buen Pagador</span>
@@ -544,7 +534,7 @@ export default function NuevaSimulacionPage() {
                   </label>
 
                   <label className="text-sm">
-                    <span className="block">Bono Verde (opcional)</span>
+                    <span className="block">Bono Verde</span>
                     <div className="flex gap-2 items-center">
                       <input type="checkbox" {...form.register("bonoVerde")} />
                       <input
@@ -573,8 +563,8 @@ export default function NuevaSimulacionPage() {
           </>
         )}
 
-        {/* Paso 4 */}
-        {step === 4 && (
+        {/* Paso 3: Resultados */}
+        {step === 3 && (
           <>
             <div className="text-sm text-emerald-900 font-medium">Resultados</div>
             <div className="rounded-2xl border bg-white p-4 space-y-4">
@@ -653,7 +643,7 @@ export default function NuevaSimulacionPage() {
           </>
         )}
 
-        {msg && step !== 4 && (
+        {msg && step !== 3 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             {msg}
           </div>
