@@ -1,5 +1,6 @@
-import RequireAuth from "@/components/auth/RequireAuth";
-import ProtectedLayout from "@/components/layout/ProtectedLayout";
+// src/app/dashboard/layout.tsx
+import ProtectedLayout from '@/components/layout/ProtectedLayout'; // Importa el nuevo layout
+import RequireAuth from '@/components/auth/RequireAuth'; // Mantenemos la protección de autenticación
 
 export default function DashboardLayout({
   children,
@@ -8,6 +9,7 @@ export default function DashboardLayout({
 }) {
   return (
     <RequireAuth>
+      {/* Envuelve el contenido con ProtectedLayout */}
       <ProtectedLayout>{children}</ProtectedLayout>
     </RequireAuth>
   );
