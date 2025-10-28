@@ -14,7 +14,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/components/hooks/use-auth';
 
 /** ===== Tipos (lo mínimo necesario para el dashboard) ===== */
 type Moneda = 'PEN' | 'USD';
