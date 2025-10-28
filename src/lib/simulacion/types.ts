@@ -1,9 +1,12 @@
 // src/types/simulacion.ts
 import type { Timestamp } from "firebase/firestore";
 
-export type Moneda = "PEN" | "USD";
+
+export type Estado = "Aprobado" | "Rechazado" | "En proceso" | undefined;
 export type TipoTasa = "TEA" | "TNA";
 export type GraceType = "sin" | "parcial" | "total";
+export type TipoGracia = "sin" | "total" | "parcial";
+export type BaseSeguro = "saldo" | "saldo_promedio";
 
 export interface Bono {
   nombre: string;
@@ -32,14 +35,16 @@ export interface EntidadFinanciera {
 /** Documento de simulación almacenado en Firestore */
 export interface Simulacion {
   // Identificación
-  id?: string;            // id local (asignado al leer el doc)
-  uid: string;            // dueño del doc (auth.uid)
+  id: string;            // id local (asignado al leer el doc)
+  userId?: string;            // dueño del doc (auth.uid)
   clienteId?: string | null;
   unidadId?: string | null;
   entidadId?: string | null;
+  monto: number;
+  nombre?: string;
+  estado?: Estado;
 
-  // Condiciones y parámetros
-  moneda: Moneda;
+
   tipoTasa: TipoTasa;
   tasaValor: number;            // p.ej., 0.10 = 10%
   capitalizacion?: number;      // si TNA (m por año)
@@ -79,3 +84,51 @@ export interface Simulacion {
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
+
+export type FormVals = {
+  // Paso 1 (Vivienda / selección)
+  tipoInmueble: "Casa" | "Departamento" | "Terreno" | "Otro";
+  departamento: string;
+  proyecto: string;
+  precioVenta: number;
+  moneda: "S/" | "$";
+
+  // Paso 2 (Financiamiento y condiciones)
+  
+  tipoTasa: TipoTasa;
+  tasaValor: number;        // proporción (0.10 = 10% anual si TEA, o TNA)
+  capitalizacion: number;   // si TNA (mínimo 1)
+  plazoMeses: number;       // mínimo 1
+  tipoGracia: TipoGracia;
+  mesesGracia: number;      // >= 0 y < plazoMeses
+  adminInicial: number;     // pago único
+  cuotaInicial: number;
+
+  // Costos & Seguros (del Word)
+  tasaDesgravamenMensual: number;   // proporción mensual (p.ej. 0.0035 = 0.35%)
+  baseSeguroDesgravamen: BaseSeguro;
+  gastosNotariales: number;
+  gastosRegistrales: number;
+  tasacionPerito: number;
+  financiarGastos: boolean;
+  fechaInicio: string;              // "yyyy-mm-dd"
+
+  // Bonos (Bono Verde auto por eco, BTP seleccionable)
+  bonoVerde: boolean;        // autogestionado (eco)
+  bonoVerdeMonto: number;    // (por definir reglas)
+  techoPropio: boolean;      // checkbox solicitado
+  techoPropioMonto: number;  // (por definir reglas)
+
+  // (no visibles ahora) BBP reservado
+  bbp?: boolean;
+  bbpMonto?: number;
+};
+
+export type Casa = {
+  id: string;
+  titulo: string;
+  precio: number; // S/
+  m2: number;
+  eco: boolean;
+  distrito: string;
+};

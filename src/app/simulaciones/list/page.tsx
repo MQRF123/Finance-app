@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -8,81 +8,12 @@ import {
   where,
   orderBy,
   onSnapshot,
-  Timestamp,
-  type DocumentData,
-  type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useAuth } from "@/components/hooks/use-auth";
-
-/* ===== Tipos ===== */
-type Moneda = "PEN" | "USD";
-type Estado = "Aprobado" | "Rechazado" | "En proceso" | undefined;
-
-type Simulacion = {
-  id: string;
-  userId: string;
-  createdAt: Timestamp | Date;
-  tcea: number;          // proporción (0.1325 = 13.25%)
-  plazoMeses: number;
-  monto: number;
-  moneda?: Moneda;
-  nombre?: string;
-  estado?: Estado;
-};
-
-/* ===== Helpers ===== */
-function toSimulacion(d: QueryDocumentSnapshot<DocumentData>): Simulacion {
-  const x = d.data();
-  const createdAt =
-    x.createdAt instanceof Timestamp
-      ? x.createdAt
-      : typeof x.createdAt === "number"
-      ? new Date(x.createdAt)
-      : new Date();
-  return {
-    id: d.id,
-    userId: String(x.userId ?? ""),
-    createdAt,
-    tcea: Number(x.tcea ?? 0),
-    plazoMeses: Number(x.plazoMeses ?? 0),
-    monto: Number(x.monto ?? 0),
-    moneda: (x.moneda as Moneda) ?? "PEN",
-    nombre: typeof x.nombre === "string" ? x.nombre : undefined,
-    estado: typeof x.estado === "string" ? (x.estado as Estado) : undefined,
-  };
-}
-
-function fmtMoney(v: number, m: Moneda = "PEN") {
-  return new Intl.NumberFormat("es-PE", {
-    style: "currency",
-    currency: m === "USD" ? "USD" : "PEN",
-    minimumFractionDigits: 2,
-  }).format(v);
-}
-
-function fmtDate(t: Timestamp | Date) {
-  const d = t instanceof Timestamp ? t.toDate() : t;
-  return new Intl.DateTimeFormat("es-PE", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-}
-
-function Badge({ estado }: { estado: Estado }) {
-  const map: Record<Exclude<Estado, undefined>, string> = {
-    Aprobado: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    "En proceso": "bg-amber-100 text-amber-800 border-amber-200",
-    Rechazado: "bg-rose-100 text-rose-800 border-rose-200",
-  };
-  if (!estado) return <span className="text-neutral-500">—</span>;
-  return (
-    <span className={`text-xs px-2 py-1 rounded-full border ${map[estado]}`}>
-      {estado}
-    </span>
-  );
-}
+import { useAuth } from "@/lib/auth/use-auth";
+import { type Simulacion, type Estado } from "@/lib/simulacion/types";
+import { toSimulacion, fmtMoney, fmtDate } from "@/lib/simulacion/utils";
+import { Badge } from "@/components/simulaciones/Badge";
 
 /* ===== Página ===== */
 export default function HistorialPage() {
@@ -200,13 +131,13 @@ export default function HistorialPage() {
 
             {filtered.map((r) => {
               const titulo = r.nombre ?? `Simulación #${r.id.slice(0, 6).toUpperCase()}`;
-              const fecha = fmtDate(r.createdAt);
-              const tcea = `${(r.tcea * 100).toFixed(2)}%`;
+              const fecha = r.createdAt ? fmtDate(r.createdAt) : '';
+              const tcea = `${((r.tcea ?? 0) * 100).toFixed(2)}%`;
               return (
                 <tr key={r.id} className="[&>td]:px-3 [&>td]:py-3 border-b last:border-0">
                   <td className="font-medium">{titulo}</td>
                   <td>{fecha}</td>
-                  <td className="whitespace-nowrap">{fmtMoney(r.monto, r.moneda ?? "PEN")}</td>
+                  <td className="whitespace-nowrap">{fmtMoney(r.monto)}</td>
                   <td>{tcea}</td>
                   <td className="whitespace-nowrap">{r.plazoMeses} m</td>
                   <td>

@@ -9,58 +9,12 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  type DocumentData,
-  type QueryDocumentSnapshot,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuth } from '@/components/hooks/use-auth';
-
-/** ===== Tipos (lo mínimo necesario para el dashboard) ===== */
-type Moneda = 'PEN' | 'USD';
-
-type Simulacion = {
-  id: string;
-  userId: string;
-  createdAt: Timestamp | Date; // Firestore Timestamp o Date
-  tcea: number;                // proporción: 0.1325 = 13.25%
-  plazoMeses: number;
-  monto: number;               // principal simulado (o monto financiado)
-  moneda?: Moneda;             // opcional, por si guardas la moneda
-  nombre?: string;             // opcional
-  estado?: 'Aprobado' | 'Rechazado' | 'En proceso';
-};
-
-/** Helper: formatea moneda */
-function fmtMoney(v: number, moneda: Moneda = 'PEN') {
-  return new Intl.NumberFormat('es-PE', {
-    style: 'currency',
-    currency: moneda === 'USD' ? 'USD' : 'PEN',
-    minimumFractionDigits: 2,
-  }).format(v);
-}
-
-/** Convierte un doc a Simulacion de forma segura */
-function toSimulacion(d: QueryDocumentSnapshot<DocumentData>): Simulacion {
-  const data = d.data();
-  const createdAt = data.createdAt instanceof Timestamp
-    ? data.createdAt
-    : typeof data.createdAt === 'number'
-      ? new Date(data.createdAt)
-      : new Date(); // fallback
-
-  return {
-    id: d.id,
-    userId: String(data.userId ?? ''),
-    createdAt,
-    tcea: Number(data.tcea ?? 0),
-    plazoMeses: Number(data.plazoMeses ?? 0),
-    monto: Number(data.monto ?? 0),
-    moneda: (data.moneda as Moneda) ?? 'PEN',
-    nombre: typeof data.nombre === 'string' ? data.nombre : undefined,
-    estado: typeof data.estado === 'string' ? (data.estado as Simulacion['estado']) : undefined,
-  };
-}
+import { useAuth } from '@/lib/auth/use-auth';
+import { type Simulacion } from '@/lib/simulacion/types';
+import { toSimulacion, fmtMoney } from '@/lib/simulacion/utils';
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -100,34 +54,35 @@ export default function DashboardPage() {
   }, [user]);
 
   /** KPIs calculados */
-  const { total, tceaProm, monto30, monedaRef } = useMemo(() => {
-    if (!rows.length) return { total: 0, tceaProm: 0, monto30: 0, monedaRef: 'PEN' as Moneda };
+  const { total, tceaProm, monto30 } = useMemo(() => {
+    if (!rows.length) return { total: 0, tceaProm: 0, monto30: 0 };
 
     const total = rows.length;
-    const tceaProm = rows.reduce((acc, r) => acc + (isFinite(r.tcea) ? r.tcea : 0), 0) / total;
+    const tceaProm = rows.reduce((acc, r) => acc + (r.tcea && isFinite(r.tcea) ? r.tcea : 0), 0) / total;
 
     const now = Date.now();
     const from = now - 30 * 24 * 60 * 60 * 1000;
     const monto30 = rows
       .filter((r) => {
-        const t = r.createdAt instanceof Timestamp ? r.createdAt.toDate().getTime() : r.createdAt.getTime();
-        return t >= from;
+        if (!r.createdAt) {
+          return false;
+        }
+        const date = r.createdAt instanceof Timestamp ? r.createdAt.toDate() : r.createdAt;
+        return date.getTime() >= from;
       })
       .reduce((acc, r) => acc + (isFinite(r.monto) ? r.monto : 0), 0);
 
     // monedaRef solo para mostrar (si mezclas monedas, aquí podrías separar por moneda)
-    const monedaRef = rows[0]?.moneda ?? 'PEN';
-
-    return { total, tceaProm, monto30, monedaRef };
+    return { total, tceaProm, monto30 };
   }, [rows]);
 
   const kpis = useMemo(
     () => [
       { label: 'Simulaciones', value: String(total) },
       { label: 'TCEA promedio', value: `${(tceaProm * 100).toFixed(2)}%` },
-      { label: 'Monto simulado', value: fmtMoney(monto30, monedaRef), hint: 'Últimos 30 días' },
+      { label: 'Monto simulado', value: fmtMoney(monto30), hint: 'Últimos 30 días' },
     ],
-    [total, tceaProm, monto30, monedaRef]
+    [total, tceaProm, monto30]
   );
 
   const recientes = rows.slice(0, 5);
@@ -170,7 +125,7 @@ export default function DashboardPage() {
               <ul className="space-y-2">
                 {recientes.map((r) => {
                   const titulo = r.nombre ?? `Simulación #${r.id.slice(0, 6).toUpperCase()}`;
-                  const meta = `TCEA ${(r.tcea * 100).toFixed(1)}% · ${r.plazoMeses}m`;
+                  const meta = `TCEA ${((r.tcea ?? 0) * 100).toFixed(1)}% · ${r.plazoMeses}m`;
                   return (
                     <li key={r.id} className="text-sm flex items-center justify-between">
                       <Link href={`/simulaciones/${r.id}`} className="font-medium hover:underline">

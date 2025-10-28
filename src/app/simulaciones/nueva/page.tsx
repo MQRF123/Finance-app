@@ -5,60 +5,11 @@ import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useAuth } from "@/components/hooks/use-auth";
+import { useAuth } from "@/lib/auth/use-auth";
 
-/* ================= Tipos ================= */
-type Moneda = "PEN" | "USD";
-type TipoTasa = "TEA" | "TNA";
-type TipoGracia = "sin" | "total" | "parcial";
-type BaseSeguro = "saldo" | "saldo_promedio";
+import { type FormVals, type Casa } from "@/lib/simulacion/types";
 
-type FormVals = {
-  // Paso 1 (Vivienda / selección)
-  tipoInmueble: "Casa" | "Departamento" | "Terreno" | "Otro";
-  departamento: string;
-  proyecto: string;
-  precioVenta: number;
-
-  // Paso 2 (Financiamiento y condiciones)
-  moneda: Moneda;
-  tipoTasa: TipoTasa;
-  tasaValor: number;        // proporción (0.10 = 10% anual si TEA, o TNA)
-  capitalizacion: number;   // si TNA (mínimo 1)
-  plazoMeses: number;       // mínimo 1
-  tipoGracia: TipoGracia;
-  mesesGracia: number;      // >= 0 y < plazoMeses
-  adminInicial: number;     // pago único
-  cuotaInicial: number;
-
-  // Costos & Seguros (del Word)
-  tasaDesgravamenMensual: number;   // proporción mensual (p.ej. 0.0035 = 0.35%)
-  baseSeguroDesgravamen: BaseSeguro;
-  gastosNotariales: number;
-  gastosRegistrales: number;
-  tasacionPerito: number;
-  financiarGastos: boolean;
-  fechaInicio: string;              // "yyyy-mm-dd"
-
-  // Bonos (Bono Verde auto por eco, BTP seleccionable)
-  bonoVerde: boolean;        // autogestionado (eco)
-  bonoVerdeMonto: number;    // (por definir reglas)
-  techoPropio: boolean;      // checkbox solicitado
-  techoPropioMonto: number;  // (por definir reglas)
-
-  // (no visibles ahora) BBP reservado
-  bbp?: boolean;
-  bbpMonto?: number;
-};
-
-type Casa = {
-  id: string;
-  titulo: string;
-  precio: number; // S/
-  m2: number;
-  eco: boolean;
-  distrito: string;
-};
+import { toNumber, toInt, preventMinus, blurOnWheel, tasaMensual, fmtMoney, ITF } from "@/lib/simulacion/utils";
 
 /* ============== Helpers y estilos ============== */
 const INPUT =
@@ -67,54 +18,16 @@ const INPUT =
 const LABEL = "text-sm";
 const ROW = "grid md:grid-cols-2 gap-3";
 
-// Números seguros >= min
-const toNumber = (v: unknown, min = 0) => {
-  if (typeof v === "number") return Math.max(min, Number.isFinite(v) ? v : 0);
-  if (typeof v === "string") {
-    const n = parseFloat(v.replace(",", "."));
-    return Math.max(min, Number.isFinite(n) ? n : 0);
-  }
-  return min;
-};
-const toInt = (v: unknown, min = 0) => Math.max(min, Math.floor(toNumber(v, min)));
-
-// Bloquear '-', '+', 'e', 'E' en number
-const preventMinus = (e: React.KeyboardEvent<HTMLInputElement>) => {
-  if (e.key === "-" || e.key === "+" || e.key === "e" || e.key === "E") e.preventDefault();
-};
-// Evitar scroll para cambiar número
-const blurOnWheel = (e: React.WheelEvent<HTMLInputElement>) => {
-  (e.currentTarget as HTMLInputElement).blur();
-};
-
-function tasaMensual(tipo: TipoTasa, v: number, cap: number) {
-  const vPos = Math.max(0, v);
-  if (tipo === "TEA") return Math.pow(1 + vPos, 1 / 12) - 1;
-  const c = Math.max(1, cap);
-  const iea = Math.pow(1 + vPos / c, c) - 1;
-  return Math.pow(1 + iea, 1 / 12) - 1;
-}
-
-function fmtMoneda(v: number, m: Moneda) {
-  return new Intl.NumberFormat("es-PE", {
-    style: "currency",
-    currency: m === "USD" ? "USD" : "PEN",
-    minimumFractionDigits: 2,
-  }).format(v);
-}
-
-// ITF 0.005% (del Word)
-const ITF = 0.00005;
-
 const defaultValues: FormVals = {
   // Vivienda / proyecto
   tipoInmueble: "Casa",
   departamento: "Lima",
   proyecto: "",
   precioVenta: 0,
+  moneda: "S/",
 
   // Financiamiento
-  moneda: "PEN",
+  
   tipoTasa: "TEA",
   tasaValor: 0.1,
   capitalizacion: 12,
@@ -169,8 +82,6 @@ export default function NuevaSimulacionPage() {
   );
 
   // Observados/calculados
-  const moneda = form.watch("moneda");
-  const simbolo = useMemo(() => (moneda === "PEN" ? "S/" : "US$"), [moneda]);
   const vals = form.watch();
 
   // Bonos (sin BBP visible por ahora)
@@ -325,7 +236,7 @@ export default function NuevaSimulacionPage() {
         tcea: tea, // aprox (luego TCEA real con cronograma)
         plazoMeses: vals.plazoMeses,
         monto: principalFinanciado,
-        moneda: vals.moneda,
+        
         nombre: vals.proyecto || null,
         estado: "En proceso",
 
@@ -360,7 +271,6 @@ export default function NuevaSimulacionPage() {
       });
       setMsg("✔ Simulación guardada. La verás en Dashboard e Historial.");
     } catch (e: unknown) {
-      // eslint-disable-next-line no-console
       console.error(e);
       const message = e instanceof Error ? e.message : "Error al guardar.";
       setMsg(message);
@@ -421,7 +331,7 @@ export default function NuevaSimulacionPage() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-2 text-2xl font-bold">{fmtMoneda(c.precio, "PEN")}</div>
+                    <div className="mt-2 text-2xl font-bold">{fmtMoney(c.precio)}</div>
                     <div className="text-sm text-neutral-600 mt-1">{c.m2} m² · {c.distrito}</div>
                     {active && <div className="text-xs text-emerald-700 mt-2">Seleccionada</div>}
                   </button>
@@ -494,19 +404,7 @@ export default function NuevaSimulacionPage() {
             <div className="rounded-2xl border bg-white p-4 space-y-5">
               {/* Tasa y plazo */}
               <div className={ROW}>
-                <div className="text-sm">
-                  Moneda
-                  <div className="mt-1 flex gap-4">
-                    <label className="flex items-center gap-2">
-                      <input type="radio" value="PEN" {...form.register("moneda")} />
-                      S/
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input type="radio" value="USD" {...form.register("moneda")} />
-                      US$
-                    </label>
-                  </div>
-                </div>
+                
 
                 <div className="text-sm">
                   Tipo de tasa
@@ -584,7 +482,7 @@ export default function NuevaSimulacionPage() {
                 </label>
 
                 <label className={LABEL}>
-                  Administración inicial ({simbolo})
+                  Administración inicial (S/)
                   <input
                     type="number"
                     min={0}
@@ -596,7 +494,7 @@ export default function NuevaSimulacionPage() {
                 </label>
 
                 <label className={LABEL}>
-                  Cuota inicial ({simbolo})
+                  Cuota inicial (S/)
                   <input
                     type="number"
                     min={0}
@@ -635,7 +533,7 @@ export default function NuevaSimulacionPage() {
                   </label>
 
                   <label className={LABEL}>
-                    Gastos notariales ({simbolo})
+                    Gastos notariales (S/)
                     <input
                       type="number"
                       min={0}
@@ -647,7 +545,7 @@ export default function NuevaSimulacionPage() {
                   </label>
 
                   <label className={LABEL}>
-                    Gastos registrales ({simbolo})
+                    Gastos registrales (S/)
                     <input
                       type="number"
                       min={0}
@@ -659,7 +557,7 @@ export default function NuevaSimulacionPage() {
                   </label>
 
                   <label className={LABEL}>
-                    Tasación por perito ({simbolo})
+                    Tasación por perito (S/)
                     <input
                       type="number"
                       min={0}
@@ -717,7 +615,7 @@ export default function NuevaSimulacionPage() {
                       (Estimado con seguro/ITF del primer mes)
                     </div>
                     <div className="text-3xl font-bold text-emerald-800">
-                      {fmtMoneda(pagoRegular, vals.moneda)}
+                      {fmtMoney(pagoRegular, vals.moneda)}
                     </div>
                     <div className="text-sm text-neutral-700">Pago mensual (aprox.)</div>
                   </div>
@@ -725,16 +623,16 @@ export default function NuevaSimulacionPage() {
                   <div className="bg-white rounded-lg border p-3 text-sm space-y-1">
                     <div className="flex justify-between">
                       <span>Precio de venta</span>
-                      <span>{fmtMoneda(vals.precioVenta, vals.moneda)}</span>
+                      <span>{fmtMoney(vals.precioVenta, vals.moneda)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Cuota inicial</span>
-                      <span>{fmtMoneda(vals.cuotaInicial, vals.moneda)}</span>
+                      <span>{fmtMoney(vals.cuotaInicial, vals.moneda)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Bonos</span>
                       <span>
-                        {fmtMoneda(
+                        {fmtMoney(
                           (vals.bonoVerde ? vals.bonoVerdeMonto : 0) +
                             (vals.techoPropio ? vals.techoPropioMonto : 0),
                           vals.moneda
@@ -743,11 +641,11 @@ export default function NuevaSimulacionPage() {
                     </div>
                     <div className="flex justify-between">
                       <span>Gastos {vals.financiarGastos ? "(financiados)" : "(no financiados)"}</span>
-                      <span>{fmtMoneda(totalGastos, vals.moneda)}</span>
+                      <span>{fmtMoney(totalGastos, vals.moneda)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Principal financiado</span>
-                      <span>{fmtMoneda(principalFinanciado, vals.moneda)}</span>
+                      <span>{fmtMoney(principalFinanciado, vals.moneda)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Plazo</span>
@@ -766,20 +664,20 @@ export default function NuevaSimulacionPage() {
                     {vals.tipoGracia !== "sin" && vals.mesesGracia > 0 && (
                       <div className="flex justify-between">
                         <span>Pago durante gracia</span>
-                        <span>{fmtMoneda(pagoGracia, vals.moneda)}</span>
+                        <span>{fmtMoney(pagoGracia, vals.moneda)}</span>
                       </div>
                     )}
                     <div className="flex justify-between">
                       <span>Cuota financiera (sin seguro/ITF)</span>
-                      <span>{fmtMoneda(cuotaBase, vals.moneda)}</span>
+                      <span>{fmtMoney(cuotaBase, vals.moneda)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Seguro desgravamen (mes 1)</span>
-                      <span>{fmtMoneda(seguroMes1, vals.moneda)}</span>
+                      <span>{fmtMoney(seguroMes1, vals.moneda)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>ITF (mes 1)</span>
-                      <span>{fmtMoneda(itfMes1, vals.moneda)}</span>
+                      <span>{fmtMoney(itfMes1, vals.moneda)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Ecofriendly</span>
