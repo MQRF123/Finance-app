@@ -132,3 +132,28 @@ export type Casa = {
   eco: boolean;
   distrito: string;
 };
+
+export interface SimulationSummary {
+  precioVenta: number;
+  cuotaInicial: number;
+  bonos: number;
+  principalFinanciado: number;
+  tasa: TipoTasa;
+  tasaValor: number;
+  iMensual: number;
+  tipoGracia: TipoGracia;
+  mesesGracia: number;
+  pagoGracia: number;
+  pagoRegular: number;
+  mesesAmort: number;
+  seguroMes1: number;
+  itfMes1: number;
+  cuotaBase: number;
+  eco: boolean;
+  techoPropio: boolean;
+  totalGastos: number;
+  financiarGastos: boolean;
+  fechaInicio: string;
+  baseSeguroDesgravamen: BaseSeguro;
+  tasaDesgravamenMensual: number;
+}
