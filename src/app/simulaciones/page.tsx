@@ -33,10 +33,7 @@ const defaultValues: FormVals = {
   moneda: "S/",
 
   // Financiamiento
-  
-  tipoTasa: "TEA",
   tasaValor: 0.1,
-  capitalizacion: 12,
   plazoMeses: 240,
   tipoGracia: "sin",
   mesesGracia: 0,
@@ -94,7 +91,7 @@ export default function NuevaSimulacionPage() {
   );
 
   // Tasa mensual efectiva
-  const i = tasaMensual(vals.tipoTasa, vals.tasaValor, vals.capitalizacion);
+  const i = tasaMensual(vals.tasaValor);
   const iMensualPct = i * 100;
   const tea = Math.pow(1 + i, 12) - 1; // aprox de TCEA por ahora
 
@@ -242,7 +239,6 @@ export default function NuevaSimulacionPage() {
           cuotaInicial: vals.cuotaInicial,
           bonos,
           principalFinanciado,
-          tasa: vals.tipoTasa,
           tasaValor: vals.tasaValor,
           iMensual: i,
           tipoGracia: vals.tipoGracia,
@@ -383,45 +379,17 @@ export default function NuevaSimulacionPage() {
             <div className="rounded-2xl border bg-white p-4 space-y-5">
               {/* Tasa y plazo */}
               <div className={ROW}>
-                
-
-                <div className="text-sm">
-                  Tipo de tasa
-                  <div className="mt-1 flex gap-4">
-                    <label className="flex items-center gap-2">
-                      <input type="radio" value="TEA" {...form.register("tipoTasa")} />
-                      TEA
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input type="radio" value="TNA" {...form.register("tipoTasa")} />
-                      TNA
-                    </label>
-                  </div>
-                </div>
-
                 <label className={LABEL}>
-                  Valor de tasa (proporción)
+                  Tasa Efectiva Anual (TEA)
                   <input
                     type="number"
                     min={0}
                     step="0.0001"
                     className={INPUT}
+                    placeholder="Ej: 0.10 para 10%"
                     onWheel={blurOnWheel}
                     onKeyDown={preventMinus}
                     {...form.register("tasaValor", { setValueAs: (v) => toNumber(v, 0) })}
-                  />
-                </label>
-
-                <label className={LABEL}>
-                  Capitalización (si TNA)
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    className={INPUT}
-                    onWheel={blurOnWheel}
-                    onKeyDown={preventMinus}
-                    {...form.register("capitalizacion", { setValueAs: (v) => toInt(v, 1) })}
                   />
                 </label>
 
@@ -634,7 +602,7 @@ export default function NuevaSimulacionPage() {
                     <div className="flex justify-between">
                       <span>Tasa</span>
                       <span>
-                        {(vals.tasaValor * 100).toFixed(2)}% {vals.tipoTasa}
+                        {(vals.tasaValor * 100).toFixed(2)}% TEA
                       </span>
                     </div>
                     <div className="flex justify-between">

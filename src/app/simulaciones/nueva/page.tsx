@@ -19,9 +19,7 @@ const defaultValues: FormVals = {
   moneda: "S/",
 
   // Financiamiento
-  tipoTasa: "TEA",
   tasaValor: 0.1,
-  capitalizacion: 12,
   plazoMeses: 240,
   tipoGracia: "sin",
   mesesGracia: 0,
@@ -156,7 +154,6 @@ export default function NuevaSimulacionPage() {
           cuotaInicial: vals.cuotaInicial,
           bonos,
           principalFinanciado,
-          tasa: vals.tipoTasa,
           tasaValor: vals.tasaValor,
           iMensual: i,
           tipoGracia: vals.tipoGracia,

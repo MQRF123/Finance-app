@@ -3,7 +3,7 @@ import type { Timestamp } from "firebase/firestore";
 
 
 export type Estado = "Aprobado" | "Rechazado" | "En proceso" | undefined;
-export type TipoTasa = "TEA" | "TNA";
+export type TipoTasa = "TEA";
 export type GraceType = "sin" | "parcial" | "total";
 export type TipoGracia = "sin" | "total" | "parcial";
 export type BaseSeguro = "saldo" | "saldo_promedio";
@@ -45,9 +45,7 @@ export interface Simulacion {
   estado?: Estado;
 
 
-  tipoTasa: TipoTasa;
   tasaValor: number;            // p.ej., 0.10 = 10%
-  capitalizacion?: number;      // si TNA (m por año)
   plazoMeses: number;
   graciaTipo: GraceType;
   graciaMeses: number;
@@ -95,9 +93,7 @@ export type FormVals = {
 
   // Paso 2 (Financiamiento y condiciones)
   
-  tipoTasa: TipoTasa;
-  tasaValor: number;        // proporción (0.10 = 10% anual si TEA, o TNA)
-  capitalizacion: number;   // si TNA (mínimo 1)
+  tasaValor: number;        // proporción (0.10 = 10% anual TEA)
   plazoMeses: number;       // mínimo 1
   tipoGracia: TipoGracia;
   mesesGracia: number;      // >= 0 y < plazoMeses
@@ -138,7 +134,6 @@ export interface SimulationSummary {
   cuotaInicial: number;
   bonos: number;
   principalFinanciado: number;
-  tasa: TipoTasa;
   tasaValor: number;
   iMensual: number;
   tipoGracia: TipoGracia;

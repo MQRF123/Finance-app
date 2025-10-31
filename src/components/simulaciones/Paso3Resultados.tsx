@@ -90,7 +90,7 @@ export function Paso3Resultados({
               <div className="flex justify-between">
                 <span>Tasa</span>
                 <span>
-                  {(currentVals.tasaValor * 100).toFixed(2)}% {currentVals.tipoTasa}
+                  {(currentVals.tasaValor * 100).toFixed(2)}% TEA
                 </span>
               </div>
               <div className="flex justify-between">

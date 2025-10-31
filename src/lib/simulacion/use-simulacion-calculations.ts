@@ -12,10 +12,7 @@ export function useSimulacionCalculations({
   principalFinanciado,
 }: SimulacionCalculationsParams) {
   // Tasa mensual efectiva
-  const i = useMemo(
-    () => tasaMensual(vals.tipoTasa, vals.tasaValor, vals.capitalizacion),
-    [vals.tipoTasa, vals.tasaValor, vals.capitalizacion]
-  );
+  const i = useMemo(() => tasaMensual(vals.tasaValor), [vals.tasaValor]);
   const iMensualPct = useMemo(() => i * 100, [i]);
   const tea = useMemo(() => Math.pow(1 + i, 12) - 1, [i]); // aprox de TCEA por ahora
 

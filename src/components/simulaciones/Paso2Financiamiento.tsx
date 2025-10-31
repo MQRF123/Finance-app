@@ -30,45 +30,17 @@ export function Paso2Financiamiento({
       <div className="rounded-2xl border bg-white p-4 space-y-5">
         {/* Tasa y plazo */}
         <div className={ROW}>
-          
-
-          <div className="text-sm">
-            Tipo de tasa
-            <div className="mt-1 flex gap-4">
-              <label className="flex items-center gap-2">
-                <input type="radio" value="TEA" {...register("tipoTasa")} />
-                TEA
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="radio" value="TNA" {...register("tipoTasa")} />
-                TNA
-              </label>
-            </div>
-          </div>
-
           <label className={LABEL}>
-            Valor de tasa (proporción)
+            Tasa Efectiva Anual (TEA)
             <input
               type="number"
               min={0}
               step="0.0001"
               className={INPUT}
+              placeholder="Ej: 0.10 para 10%"
               onWheel={blurOnWheel}
               onKeyDown={preventMinus}
               {...register("tasaValor", { setValueAs: (v) => toNumber(v, 0) })}
-            />
-          </label>
-
-          <label className={LABEL}>
-            Capitalización (si TNA)
-            <input
-              type="number"
-              min={1}
-              step={1}
-              className={INPUT}
-              onWheel={blurOnWheel}
-              onKeyDown={preventMinus}
-              {...register("capitalizacion", { setValueAs: (v) => toInt(v, 1) })}
             />
           </label>
 

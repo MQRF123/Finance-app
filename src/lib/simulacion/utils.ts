@@ -1,6 +1,6 @@
 
 import { type DocumentData, type QueryDocumentSnapshot, Timestamp } from 'firebase/firestore';
-import { type Simulacion, type TipoTasa, type GraceType, type Bono } from './types';
+import { type Simulacion, type GraceType, type Bono } from './types';
 
 /** Convierte un doc a Simulacion de forma segura */
 export function toSimulacion(d: QueryDocumentSnapshot<DocumentData>): Simulacion {
@@ -22,9 +22,7 @@ export function toSimulacion(d: QueryDocumentSnapshot<DocumentData>): Simulacion
     nombre: typeof data.nombre === 'string' ? data.nombre : undefined,
     estado: typeof data.estado === 'string' ? (data.estado as Simulacion['estado']) : undefined,
 
-    tipoTasa: data.tipoTasa as TipoTasa,
     tasaValor: Number(data.tasaValor ?? 0),
-    capitalizacion: Number(data.capitalizacion ?? 0),
     graciaTipo: data.graciaTipo as GraceType,
     graciaMeses: Number(data.graciaMeses ?? 0),
     precioVenta: Number(data.precioVenta ?? 0),
@@ -85,12 +83,9 @@ export const blurOnWheel = (e: React.WheelEvent<HTMLInputElement>) => {
   (e.currentTarget as HTMLInputElement).blur();
 };
 
-export function tasaMensual(tipo: TipoTasa, v: number, cap: number) {
+export function tasaMensual(v: number) {
   const vPos = Math.max(0, v);
-  if (tipo === "TEA") return Math.pow(1 + vPos, 1 / 12) - 1;
-  const c = Math.max(1, cap);
-  const iea = Math.pow(1 + vPos / c, c) - 1;
-  return Math.pow(1 + iea, 1 / 12) - 1;
+  return Math.pow(1 + vPos, 1 / 12) - 1;
 }
 
 // ITF 0.005% (del Word)

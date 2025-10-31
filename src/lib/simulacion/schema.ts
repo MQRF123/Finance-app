@@ -19,9 +19,7 @@ export const schema = z.object({
 
   // Paso 3 – Condiciones
   moneda: z.enum(["PEN", "USD"]).default("PEN"),
-  tipoTasa: z.enum(["TEA", "TNA"]).default("TEA"),
   tasaValor: z.coerce.number().min(0.0001),
-  capitalizacion: z.coerce.number().min(1).default(12),
   plazoMeses: z.coerce.number().min(1),
   graciaTipo: z.enum(["sin", "parcial", "total"]).default("sin"),
   graciaMeses: z.coerce.number().min(0).default(0),
@@ -56,9 +54,7 @@ export const defaultVals: FormValues = {
   precioVenta: 0,
 
   moneda: "PEN",
-  tipoTasa: "TEA",
   tasaValor: 0.1,
-  capitalizacion: 12,
   plazoMeses: 240,
   graciaTipo: "sin",
   graciaMeses: 0,
