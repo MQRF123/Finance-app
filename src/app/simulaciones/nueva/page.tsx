@@ -89,14 +89,14 @@ export default function NuevaSimulacionPage() {
   const {
     i,
     iMensualPct,
-    tea,
     pagoGracia,
     pagoRegular,
     mesesAmort,
     seguroMes1,
     itfMes1,
     cuotaBase,
-  } = useSimulacionCalculations({ vals, principalFinanciado });
+    tcea,
+  } = useSimulacionCalculations({ vals, principalFinanciado, totalGastos });
 
   // Hoy para min de fecha
   const hoy = useMemo(() => {
@@ -144,7 +144,7 @@ export default function NuevaSimulacionPage() {
     try {
       await saveSimulation({
         userId: user.uid,
-        tcea: tea,
+        tcea: tcea, // <-- Usar TCEA real
         plazoMeses: vals.plazoMeses,
         monto: principalFinanciado,
         nombre: vals.proyecto || null,
@@ -205,6 +205,7 @@ export default function NuevaSimulacionPage() {
       seguroMes1={seguroMes1}
       itfMes1={itfMes1}
       totalGastos={totalGastos}
+      tcea={tcea} // <-- Pasar TCEA
     />
   );
 }

@@ -17,6 +17,7 @@ interface Paso3ResultadosProps {
   seguroMes1: number;
   itfMes1: number;
   totalGastos: number;
+  tcea: number;
 }
 
 export function Paso3Resultados({
@@ -33,6 +34,7 @@ export function Paso3Resultados({
   seguroMes1,
   itfMes1,
   totalGastos,
+  tcea,
 }: Paso3ResultadosProps) {
   const { watch } = useFormContext<FormVals>();
   const currentVals = watch(); // Use currentVals to avoid prop drilling issues if vals is not updated
@@ -90,7 +92,7 @@ export function Paso3Resultados({
               <div className="flex justify-between">
                 <span>Tasa</span>
                 <span>
-                  {(currentVals.tasaValor * 100).toFixed(2)}% TEA
+                  {(tcea * 100).toFixed(2)}% TCEA
                 </span>
               </div>
               <div className="flex justify-between">

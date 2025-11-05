@@ -28,6 +28,7 @@ interface SimulacionFormProps {
   seguroMes1: number;
   itfMes1: number;
   totalGastos: number;
+  tcea: number;
 }
 
 export function SimulacionForm({
@@ -52,6 +53,7 @@ export function SimulacionForm({
   seguroMes1,
   itfMes1,
   totalGastos,
+  tcea,
 }: SimulacionFormProps) {
   return (
     <FormProvider {...form}>
@@ -91,6 +93,7 @@ export function SimulacionForm({
               seguroMes1={seguroMes1}
               itfMes1={itfMes1}
               totalGastos={totalGastos}
+              tcea={tcea}
             />
           )}
 
