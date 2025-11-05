@@ -52,8 +52,6 @@ const defaultValues: FormVals = {
   // Bonos
   bonoVerde: false,
   bonoVerdeMonto: 0,
-  techoPropio: false,
-  techoPropioMonto: 0,
 
   // BBP reservado
   bbp: false,
@@ -78,9 +76,7 @@ export default function NuevaSimulacionPage() {
   const vals = form.watch();
 
   // Bonos (sin BBP visible por ahora)
-  const bonos =
-    (vals.bonoVerde ? vals.bonoVerdeMonto : 0) +
-    (vals.techoPropio ? vals.techoPropioMonto : 0);
+  const bonos = vals.bonoVerde ? vals.bonoVerdeMonto : 0;
 
   // Gastos (si financiar = true, se suman al principal)
   const totalGastos = vals.gastosNotariales + vals.gastosRegistrales + vals.tasacionPerito;
@@ -251,7 +247,6 @@ export default function NuevaSimulacionPage() {
           cuotaBase,
           // 3. Usamos la lista 'casas' importada
           eco: selCasa ? casas.find((x) => x.id === selCasa)?.eco === true : false,
-          techoPropio: vals.techoPropio,
           totalGastos,
           financiarGastos: vals.financiarGastos,
           fechaInicio: vals.fechaInicio,
@@ -332,11 +327,7 @@ export default function NuevaSimulacionPage() {
                   />
                 </label>
 
-                {/* Bono Techo Propio (sigue activo en Paso 1) */}
-                <label className={`${LABEL} flex items-center gap-2`}>
-                  <input type="checkbox" {...form.register("techoPropio")} />
-                  <span>Aplicar Bono Techo Propio</span>
-                </label>
+
 
                 {/* Bono Verde: solo indicador, no editable */}
                 <div className={LABEL}>
@@ -581,8 +572,7 @@ export default function NuevaSimulacionPage() {
                       <span>Bonos</span>
                       <span>
                         {fmtMoney(
-                          (vals.bonoVerde ? vals.bonoVerdeMonto : 0) +
-                            (vals.techoPropio ? vals.techoPropioMonto : 0),
+                          (vals.bonoVerde ? vals.bonoVerdeMonto : 0),
                           vals.moneda
                         )}
                       </span>
@@ -631,10 +621,7 @@ export default function NuevaSimulacionPage() {
                       <span>Ecofriendly</span>
                       <span>{vals.bonoVerde ? "Sí (Bono Verde aplicable)" : "No"}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Techo Propio</span>
-                      <span>{vals.techoPropio ? "Aplicado" : "No aplica"}</span>
-                    </div>
+
                     <div className="flex justify-between">
                       <span>Inicio del crédito</span>
                       <span>{vals.fechaInicio || "—"}</span>

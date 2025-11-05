@@ -112,8 +112,6 @@ export type FormVals = {
   // Bonos (Bono Verde auto por eco, BTP seleccionable)
   bonoVerde: boolean;        // autogestionado (eco)
   bonoVerdeMonto: number;    // (por definir reglas)
-  techoPropio: boolean;      // checkbox solicitado
-  techoPropioMonto: number;  // (por definir reglas)
 
   // (no visibles ahora) BBP reservado
   bbp?: boolean;
@@ -145,7 +143,6 @@ export interface SimulationSummary {
   itfMes1: number;
   cuotaBase: number;
   eco: boolean;
-  techoPropio: boolean;
   totalGastos: number;
   financiarGastos: boolean;
   fechaInicio: string;

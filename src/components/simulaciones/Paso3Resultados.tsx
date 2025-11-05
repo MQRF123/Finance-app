@@ -72,7 +72,7 @@ export function Paso3Resultados({
                 <span>
                   {fmtMoney(
                     (currentVals.bonoVerde ? currentVals.bonoVerdeMonto : 0) +
-                      (currentVals.techoPropio ? currentVals.techoPropioMonto : 0),
+                      (currentVals.bbp ? currentVals.bbpMonto ?? 0 : 0),
                     currentVals.moneda
                   )}
                 </span>
@@ -121,10 +121,7 @@ export function Paso3Resultados({
                 <span>Ecofriendly</span>
                 <span>{currentVals.bonoVerde ? "Sí (Bono Verde aplicable)" : "No"}</span>
               </div>
-              <div className="flex justify-between">
-                <span>Techo Propio</span>
-                <span>{currentVals.techoPropio ? "Aplicado" : "No aplica"}</span>
-              </div>
+
               <div className="flex justify-between">
                 <span>Inicio del crédito</span>
                 <span>{currentVals.fechaInicio || "—"}</span>

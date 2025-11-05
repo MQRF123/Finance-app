@@ -1,12 +1,12 @@
 import React from "react";
-import { useFormContext } from "react-hook-form";
+import { useFormContext, Controller } from "react-hook-form";
 import { FormVals, Casa } from "@/lib/simulacion/types";
 import { fmtMoney } from "@/lib/simulacion/utils";
 
 interface Paso1ViviendaProps {
   casas: Casa[];
   selCasa: string | null;
-  setSelCasa: (id: string | null) => void;
+  onCasaSelect: (casa: Casa) => void;
   goNext: () => void;
   msg: string;
 }
@@ -20,26 +20,33 @@ const ROW = "grid md:grid-cols-2 gap-3";
 export function Paso1Vivienda({
   casas,
   selCasa,
-  setSelCasa,
+  onCasaSelect,
   goNext,
   msg,
 }: Paso1ViviendaProps) {
-  const { register, setValue, watch } = useFormContext<FormVals>();
-  const vals = watch();
-
-  const seleccionarCasa = (c: Casa) => {
-    setSelCasa(c.id);
-    setValue("proyecto", c.titulo);
-    setValue("tipoInmueble", "Casa");
-    setValue("departamento", "Lima");
-    setValue("precioVenta", c.precio);
-    setValue("bonoVerde", c.eco);
-    if (!c.eco) setValue("bonoVerdeMonto", 0);
-  };
+  const { register, watch, control } = useFormContext<FormVals>();
+  
+  // Estrategia final: observar campos individualmente
+  const [precioVenta, bbpMonto, bonoVerdeMonto, moneda, bonoVerde] = watch([
+    "precioVenta",
+    "bbpMonto",
+    "bonoVerdeMonto",
+    "moneda",
+    "bonoVerde"
+  ]);
 
   return (
     <>
       <div className="text-sm text-emerald-900 font-medium">Paso 1: Elige tu vivienda</div>
+
+      {/* --- DEBUG --- */}
+      <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded relative mb-4" role="alert">
+        <strong className="font-bold">Debug Info: </strong>
+        <span className="block sm:inline">
+          BBP: {bbpMonto ?? 'undefined'} | Verde: {bonoVerdeMonto ?? 'undefined'}
+        </span>
+      </div>
+      {/* --- END DEBUG --- */}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {casas.map((c) => {
@@ -48,9 +55,9 @@ export function Paso1Vivienda({
             <button
               key={c.id}
               type="button"
-              onClick={() => seleccionarCasa(c)}
-              className={`text-left rounded-2xl border bg-white p-4 transition
-                ${active ? "ring-2 ring-emerald-500 border-emerald-500" : "hover:shadow-sm"}`}
+              onClick={() => onCasaSelect(c)}
+              className={`text-left rounded-2xl border bg-white p-4 transition ${
+                active ? "ring-2 ring-emerald-500 border-emerald-500" : "hover:shadow-sm"}`}
             >
               <div className="flex items-start justify-between">
                 <div className="font-medium">{c.titulo}</div>
@@ -60,7 +67,7 @@ export function Paso1Vivienda({
                   </span>
                 )}
               </div>
-              <div className="mt-2 text-2xl font-bold">{fmtMoney(c.precio)}</div>
+              <div className="mt-2 text-2xl font-bold">{fmtMoney(c.precio, moneda)}</div>
               <div className="text-sm text-neutral-600 mt-1">{c.m2} m² · {c.distrito}</div>
               {active && <div className="text-xs text-emerald-700 mt-2">Seleccionada</div>}
             </button>
@@ -75,33 +82,58 @@ export function Paso1Vivienda({
             <input className={INPUT} readOnly {...register("proyecto")} />
           </label>
 
-          {/* Precio de venta ahora es SOLO LECTURA */}
           <label className={LABEL}>
-            Precio de venta (S/)
-            <input
-              type="number"
-              className={`${INPUT} bg-neutral-100`}
-              readOnly
-              tabIndex={-1}
-              {...register("precioVenta")}
+            Precio final (con bonos)
+            <Controller
+              control={control}
+              name="precioVenta"
+              render={({ field: { ref, name, onBlur, onChange } }) => (
+                <input
+                  ref={ref}
+                  name={name}
+                  onBlur={onBlur}
+                  onChange={onChange}
+                  type="text"
+                  className={`${INPUT} bg-neutral-100`}
+                  readOnly
+                  tabIndex={-1}
+                  value={fmtMoney(
+                    precioVenta - ((bbpMonto ?? 0) + (bonoVerdeMonto ?? 0)),
+                    moneda
+                  )}
+                />
+              )}
             />
           </label>
 
-          {/* Bono Techo Propio (sigue activo en Paso 1) */}
-          <label className={`${LABEL} flex items-center gap-2`}>
-            <input type="checkbox" {...register("techoPropio")} />
-            <span>Aplicar Bono Techo Propio</span>
+          <label className={LABEL}>
+            Bono del Buen Pagador (BBP)
+            <input
+              className={`${INPUT} bg-neutral-100`}
+              readOnly
+              tabIndex={-1}
+              {...register("bbpMonto")}
+            />
           </label>
 
-          {/* Bono Verde: solo indicador, no editable */}
+          <label className={LABEL}>
+            Bono Verde
+            <input
+              className={`${INPUT} bg-neutral-100`}
+              readOnly
+              tabIndex={-1}
+              {...register("bonoVerdeMonto")}
+            />
+          </label>
+
           <div className={LABEL}>
             Bono Verde aplicable:{" "}
             <span className={`px-2 py-0.5 rounded-full text-xs border ${
-              vals.bonoVerde
+              bonoVerde
                 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                 : "bg-neutral-50 text-neutral-700 border-neutral-200"
             }`}>
-              {vals.bonoVerde ? "Sí (vivienda ecofriendly)" : "No"}
+              {bonoVerde ? "Sí (vivienda ecofriendly)" : "No"}
             </span>
           </div>
         </div>

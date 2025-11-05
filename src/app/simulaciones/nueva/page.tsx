@@ -10,6 +10,8 @@ import { saveSimulation } from "@/lib/simulacion/services/firebase";
 import { useSimulacionCalculations } from "@/lib/simulacion/use-simulacion-calculations";
 import { SimulacionForm } from "@/components/simulaciones/SimulacionForm";
 
+import { calcularBonoBuenPagador, calcularBonoVerde } from "@/lib/simulacion/bonos";
+
 const defaultValues: FormVals = {
   // Vivienda / proyecto
   tipoInmueble: "Casa",
@@ -38,10 +40,6 @@ const defaultValues: FormVals = {
   // Bonos
   bonoVerde: false,
   bonoVerdeMonto: 0,
-  techoPropio: false,
-  techoPropioMonto: 0,
-
-  // BBP reservado
   bbp: false,
   bbpMonto: 0,
 };
@@ -70,13 +68,27 @@ export default function NuevaSimulacionPage() {
     []
   );
 
+  const onCasaSelect = (c: Casa) => {
+    setSelCasa(c.id);
+    form.setValue("proyecto", c.titulo);
+    form.setValue("tipoInmueble", "Casa");
+    form.setValue("departamento", "Lima");
+    form.setValue("precioVenta", c.precio);
+
+    const bbpMonto = calcularBonoBuenPagador(c.precio);
+    const bonoVerdeMonto = calcularBonoVerde(c.precio, c.eco);
+
+    form.setValue("bbp", bbpMonto > 0);
+    form.setValue("bbpMonto", bbpMonto);
+    form.setValue("bonoVerde", bonoVerdeMonto > 0);
+    form.setValue("bonoVerdeMonto", bonoVerdeMonto);
+  };
+
   // Observados/calculados
   const vals = form.watch();
 
-  // Bonos (sin BBP visible por ahora)
-  const bonos =
-    (vals.bonoVerde ? vals.bonoVerdeMonto : 0) +
-    (vals.techoPropio ? vals.techoPropioMonto : 0);
+  // Bonos
+  const bonos = (vals.bbp ? vals.bbpMonto ?? 0 : 0) + (vals.bonoVerde ? vals.bonoVerdeMonto ?? 0 : 0);
 
   // Gastos (si financiar = true, se suman al principal)
   const totalGastos = vals.gastosNotariales + vals.gastosRegistrales + vals.tasacionPerito;
@@ -165,7 +177,6 @@ export default function NuevaSimulacionPage() {
           itfMes1,
           cuotaBase,
           eco: selCasa ? casas.find((x) => x.id === selCasa)?.eco === true : false,
-          techoPropio: vals.techoPropio,
           totalGastos,
           financiarGastos: vals.financiarGastos,
           fechaInicio: vals.fechaInicio,
@@ -188,7 +199,7 @@ export default function NuevaSimulacionPage() {
       step={step}
       casas={casas}
       selCasa={selCasa}
-      setSelCasa={setSelCasa}
+      onCasaSelect={onCasaSelect}
       goNext={goNext}
       goBack={goBack}
       onCalcular={onCalcular}

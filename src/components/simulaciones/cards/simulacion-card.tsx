@@ -16,6 +16,8 @@ export const casas: Casa[] = [
   { id: "c8", titulo: "Casa San Borja",   precio: 245000, m2: 120, eco: true,  distrito: "San Borja" },
 ];
 
+import { calcularBonoBuenPagador } from "@/lib/simulacion/bonos";
+
 // 2. Creamos el componente que renderiza las tarjetas
 interface SimulacionCardsProps {
   selCasa: string | null;
@@ -27,6 +29,7 @@ export function SimulacionCards({ selCasa, onCasaSelect }: SimulacionCardsProps)
     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {casas.map((c) => {
         const active = selCasa === c.id;
+        const bbp = calcularBonoBuenPagador(c.precio) > 0;
         return (
           <button
             key={c.id}
@@ -37,11 +40,18 @@ export function SimulacionCards({ selCasa, onCasaSelect }: SimulacionCardsProps)
           >
             <div className="flex items-start justify-between">
               <div className="font-medium">{c.titulo}</div>
-              {c.eco && (
-                <span className="text-[10px] rounded-full bg-emerald-100 text-emerald-700 px-2 py-1 border border-emerald-200">
-                  Ecofriendly
-                </span>
-              )}
+              <div className="flex gap-2">
+                {bbp && (
+                  <span className="text-[10px] rounded-full bg-blue-100 text-blue-700 px-2 py-1 border border-blue-200">
+                    BBP
+                  </span>
+                )}
+                {c.eco && (
+                  <span className="text-[10px] rounded-full bg-emerald-100 text-emerald-700 px-2 py-1 border border-emerald-200">
+                    Bono Verde
+                  </span>
+                )}
+              </div>
             </div>
             <div className="mt-2 text-2xl font-bold">{fmtMoney(c.precio)}</div>
             <div className="text-sm text-neutral-600 mt-1">{c.m2} m² · {c.distrito}</div>

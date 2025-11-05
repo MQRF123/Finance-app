@@ -11,7 +11,7 @@ interface SimulacionFormProps {
   step: 1 | 2 | 3;
   casas: Casa[];
   selCasa: string | null;
-  setSelCasa: (id: string | null) => void;
+  onCasaSelect: (casa: Casa) => void;
   goNext: () => void;
   goBack: () => void;
   onCalcular: () => void;
@@ -36,7 +36,7 @@ export function SimulacionForm({
   step,
   casas,
   selCasa,
-  setSelCasa,
+  onCasaSelect,
   goNext,
   goBack,
   onCalcular,
@@ -68,7 +68,7 @@ export function SimulacionForm({
             <Paso1Vivienda
               casas={casas}
               selCasa={selCasa}
-              setSelCasa={setSelCasa}
+              onCasaSelect={onCasaSelect}
               goNext={goNext}
               msg={msg}
             />
