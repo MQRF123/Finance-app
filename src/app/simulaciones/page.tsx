@@ -9,14 +9,25 @@ import { useAuth } from "@/lib/auth/use-auth";
 
 import { type FormVals, type Casa } from "@/lib/simulacion/types";
 
-import { toNumber, toInt, preventMinus, blurOnWheel, tasaMensual, fmtMoney, ITF } from "@/lib/simulacion/utils";
+import {
+  toNumber,
+  toInt,
+  preventMinus,
+  blurOnWheel,
+  tasaMensual,
+  fmtMoney,
+  ITF,
+} from "@/lib/simulacion/utils";
 
 // --- INICIO DE CAMBIOS ---
-// 1. Importamos el nuevo componente y la lista de casas
+// 1) Importamos el componente de cards, el dataset y los calculadores de bonos
 import { SimulacionCards } from "@/components/simulaciones/cards/simulacion-card";
 import { casas } from "@/lib/simulacion/data/casas";
+import {
+  calcularBonoBuenPagador,
+  calcularBonoVerde,
+} from "@/lib/simulacion/bonos";
 // --- FIN DE CAMBIOS ---
-
 
 /* ============== Helpers y estilos ============== */
 const INPUT =
@@ -68,33 +79,47 @@ export default function NuevaSimulacionPage() {
 
   const form = useForm<FormVals>({ defaultValues, mode: "onTouched" });
 
-  // --- INICIO DE CAMBIOS ---
-  // 2. El catálogo de casas ya no se define aquí, se importa
-  // (El useMemo que estaba aquí ha sido eliminado)
-  // --- FIN DE CAMBIOS ---
-
-  // Observados/calculados
+  // Observados
   const vals = form.watch();
 
-  // Bonos (sin BBP visible por ahora)
-  const bonos = vals.bonoVerde ? vals.bonoVerdeMonto : 0;
+  // --- INICIO DE CAMBIOS ---
+  // 2) Bonos TOTALES (BBP + Verde). Esto asegura que ya no se quede en 0 si la casa es eco o si aplica BBP.
+  const bonosTotales =
+    (vals.bbp ? Number(vals.bbpMonto || 0) : 0) +
+    (vals.bonoVerde ? Number(vals.bonoVerdeMonto || 0) : 0);
+  // --- FIN DE CAMBIOS ---
 
   // Gastos (si financiar = true, se suman al principal)
-  const totalGastos = vals.gastosNotariales + vals.gastosRegistrales + vals.tasacionPerito;
+  const totalGastos =
+    Number(vals.gastosNotariales || 0) +
+    Number(vals.gastosRegistrales || 0) +
+    Number(vals.tasacionPerito || 0);
 
+  // --- INICIO DE CAMBIOS ---
+  // 3) Principal financiado: restamos los BONOS (BBP + Verde) del precio
   const principalFinanciado = Math.max(
     0,
-    vals.precioVenta - vals.cuotaInicial - bonos + (vals.financiarGastos ? totalGastos : 0)
+    Number(vals.precioVenta || 0) -
+      Number(vals.cuotaInicial || 0) -
+      bonosTotales +
+      (vals.financiarGastos ? totalGastos : 0)
   );
+  // --- FIN DE CAMBIOS ---
 
-  // Tasa mensual efectiva
+  // Tasa mensual efectiva (usando TEA en vals.tasaValor)
   const i = tasaMensual(vals.tasaValor);
   const iMensualPct = i * 100;
   const tea = Math.pow(1 + i, 12) - 1; // aprox de TCEA por ahora
 
   // Cuota base (sin seguro/ITF), considerando gracia
-  // Nota: si gracia total/parcial, capitalizamos o no amortizamos meses de gracia
-  const { pagoGracia, pagoRegular, mesesAmort, seguroMes1, itfMes1, cuotaBase } = useMemo(() => {
+  const {
+    pagoGracia,
+    pagoRegular,
+    mesesAmort,
+    seguroMes1,
+    itfMes1,
+    cuotaBase,
+  } = useMemo(() => {
     const mGr = Math.max(0, Math.min(vals.mesesGracia, vals.plazoMeses - 1));
 
     // Saldo sobre el que se amortiza después de la gracia
@@ -120,9 +145,7 @@ export default function NuevaSimulacionPage() {
 
     // Seguro mes 1 según base seleccionada
     const baseSeguro =
-      vals.baseSeguroDesgravamen === "saldo"
-        ? P
-        : (P + saldo1) / 2; // saldo_promedio aprox
+      vals.baseSeguroDesgravamen === "saldo" ? P : (P + saldo1) / 2; // saldo_promedio aprox
 
     const seguro1 = baseSeguro * Math.max(0, vals.tasaDesgravamenMensual);
 
@@ -132,12 +155,12 @@ export default function NuevaSimulacionPage() {
     // Pago durante gracia (si aplica)
     let pagoGr = 0;
     if (vals.tipoGracia === "total" && mGr > 0) {
-      // Solo seguro en gracia total (aprox usando P como base)
-      const baseG = vals.baseSeguroDesgravamen === "saldo" ? principalFinanciado : principalFinanciado; // aprox
+      // Solo seguro en gracia total (aprox usando principalFinanciado como base)
+      const baseG = principalFinanciado;
       pagoGr = baseG * Math.max(0, vals.tasaDesgravamenMensual);
     } else if (vals.tipoGracia === "parcial" && mGr > 0) {
       // Interés + seguro
-      const baseG = vals.baseSeguroDesgravamen === "saldo" ? principalFinanciado : principalFinanciado; // aprox
+      const baseG = principalFinanciado;
       const segG = baseG * Math.max(0, vals.tasaDesgravamenMensual);
       pagoGr = principalFinanciado * i + segG;
     }
@@ -163,16 +186,27 @@ export default function NuevaSimulacionPage() {
     i,
   ]);
 
-  // Selección de casa: setea proyecto, precio (solo lectura), tipo y bonoVerde según eco
+  // --- INICIO DE CAMBIOS ---
+  // 4) Selección de casa: setea proyecto, precio, y CALCULA bbp/bonoVerdeMonto correctamente.
   const seleccionarCasa = (c: Casa) => {
     setSelCasa(c.id);
     form.setValue("proyecto", c.titulo);
     form.setValue("tipoInmueble", "Casa");
     form.setValue("departamento", "Lima");
     form.setValue("precioVenta", c.precio);
-    form.setValue("bonoVerde", c.eco);
-    if (!c.eco) form.setValue("bonoVerdeMonto", 0);
+
+    // BBP por rango de precio
+    const bbpMonto = calcularBonoBuenPagador(Number(c.precio || 0));
+    form.setValue("bbp", bbpMonto > 0);
+    form.setValue("bbpMonto", bbpMonto);
+
+    // Bono Verde solo si la vivienda es eco
+    const esEco = !!c.eco;
+    const bonoVerdeMonto = esEco ? calcularBonoVerde(Number(c.precio || 0)) : 0;
+    form.setValue("bonoVerde", esEco);
+    form.setValue("bonoVerdeMonto", bonoVerdeMonto);
   };
+  // --- FIN DE CAMBIOS ---
 
   // Hoy para min de fecha
   const hoy = useMemo(() => {
@@ -205,10 +239,10 @@ export default function NuevaSimulacionPage() {
       }
     }
     setMsg("");
-    setStep((s) => (Math.min(3, s + 1) as 1 | 2 | 3));
+    setStep((s) => Math.min(3, (s + 1) as 1 | 2 | 3) as 1 | 2 | 3);
   };
 
-  const goBack = () => setStep((s) => (Math.max(1, s - 1) as 1 | 2 | 3));
+  const goBack = () => setStep((s) => Math.max(1, (s - 1) as 1 | 2 | 3) as 1 | 2 | 3);
   const onCalcular = () => setStep(3);
 
   const onGuardar = async () => {
@@ -226,7 +260,7 @@ export default function NuevaSimulacionPage() {
         tcea: tea, // aprox (luego TCEA real con cronograma)
         plazoMeses: vals.plazoMeses,
         monto: principalFinanciado,
-        
+
         nombre: vals.proyecto || null,
         estado: "En proceso",
 
@@ -234,7 +268,9 @@ export default function NuevaSimulacionPage() {
         resumen: {
           precioVenta: vals.precioVenta,
           cuotaInicial: vals.cuotaInicial,
-          bonos,
+          // --- INICIO DE CAMBIOS ---
+          bonos: bonosTotales, // guardamos la suma de bonos (BBP + Verde)
+          // --- FIN DE CAMBIOS ---
           principalFinanciado,
           tasaValor: vals.tasaValor,
           iMensual: i,
@@ -246,7 +282,6 @@ export default function NuevaSimulacionPage() {
           seguroMes1,
           itfMes1,
           cuotaBase,
-          // 3. Usamos la lista 'casas' importada
           eco: selCasa ? casas.find((x) => x.id === selCasa)?.eco === true : false,
           totalGastos,
           financiarGastos: vals.financiarGastos,
@@ -299,15 +334,12 @@ export default function NuevaSimulacionPage() {
         {/* Paso 1: Selección de vivienda */}
         {step === 1 && (
           <>
-            <div className="text-sm text-emerald-900 font-medium">Paso 1: Elige tu vivienda</div>
+            <div className="text-sm text-emerald-900 font-medium">
+              Paso 1: Elige tu vivienda
+            </div>
 
-            {/* --- INICIO DE CAMBIOS --- */}
-            {/* 4. Usamos el nuevo componente aquí */}
-            <SimulacionCards 
-              selCasa={selCasa} 
-              onCasaSelect={seleccionarCasa} 
-            />
-            {/* --- FIN DE CAMBIOS --- */}
+            {/* Cards de viviendas */}
+            <SimulacionCards selCasa={selCasa} onCasaSelect={seleccionarCasa} />
 
             <div className="rounded-2xl border bg-white p-4">
               <div className={ROW}>
@@ -316,7 +348,7 @@ export default function NuevaSimulacionPage() {
                   <input className={INPUT} readOnly {...form.register("proyecto")} />
                 </label>
 
-                {/* Precio de venta ahora es SOLO LECTURA */}
+                {/* Precio de venta: SOLO LECTURA */}
                 <label className={LABEL}>
                   Precio de venta (S/)
                   <input
@@ -328,16 +360,16 @@ export default function NuevaSimulacionPage() {
                   />
                 </label>
 
-
-
-                {/* Bono Verde: solo indicador, no editable */}
+                {/* Bono Verde: indicador */}
                 <div className={LABEL}>
                   Bono Verde aplicable:{" "}
-                  <span className={`px-2 py-0.5 rounded-full text-xs border ${
-                    vals.bonoVerde
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : "bg-neutral-50 text-neutral-700 border-neutral-200"
-                  }`}>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs border ${
+                      vals.bonoVerde
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : "bg-neutral-50 text-neutral-700 border-neutral-200"
+                    }`}
+                  >
                     {vals.bonoVerde ? "Sí (vivienda ecofriendly)" : "No"}
                   </span>
                 </div>
@@ -347,7 +379,10 @@ export default function NuevaSimulacionPage() {
                 <button className="rounded-lg border px-4 py-2 text-sm" disabled>
                   Anterior
                 </button>
-                <button onClick={goNext} className="rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm">
+                <button
+                  onClick={goNext}
+                  className="rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm"
+                >
                   Siguiente ▸
                 </button>
               </div>
@@ -363,7 +398,6 @@ export default function NuevaSimulacionPage() {
 
         {/* Paso 2: Financiamiento y condiciones */}
         {step === 2 && (
-          // ... (El resto del Paso 2 no cambia)
           <>
             <div className="text-sm text-emerald-900 font-medium">
               Paso 2: Financiamiento y condiciones
@@ -381,7 +415,9 @@ export default function NuevaSimulacionPage() {
                     placeholder="Ej: 0.10 para 10%"
                     onWheel={blurOnWheel}
                     onKeyDown={preventMinus}
-                    {...form.register("tasaValor", { setValueAs: (v) => toNumber(v, 0) })}
+                    {...form.register("tasaValor", {
+                      setValueAs: (v) => toNumber(v, 0),
+                    })}
                   />
                 </label>
 
@@ -394,7 +430,9 @@ export default function NuevaSimulacionPage() {
                     className={INPUT}
                     onWheel={blurOnWheel}
                     onKeyDown={preventMinus}
-                    {...form.register("plazoMeses", { setValueAs: (v) => toInt(v, 1) })}
+                    {...form.register("plazoMeses", {
+                      setValueAs: (v) => toInt(v, 1),
+                    })}
                   />
                 </label>
 
@@ -416,7 +454,9 @@ export default function NuevaSimulacionPage() {
                     className={INPUT}
                     onWheel={blurOnWheel}
                     onKeyDown={preventMinus}
-                    {...form.register("mesesGracia", { setValueAs: (v) => toInt(v, 0) })}
+                    {...form.register("mesesGracia", {
+                      setValueAs: (v) => toInt(v, 0),
+                    })}
                   />
                 </label>
 
@@ -428,7 +468,9 @@ export default function NuevaSimulacionPage() {
                     className={INPUT}
                     onWheel={blurOnWheel}
                     onKeyDown={preventMinus}
-                    {...form.register("adminInicial", { setValueAs: (v) => toNumber(v, 0) })}
+                    {...form.register("adminInicial", {
+                      setValueAs: (v) => toNumber(v, 0),
+                    })}
                   />
                 </label>
 
@@ -440,14 +482,18 @@ export default function NuevaSimulacionPage() {
                     className={INPUT}
                     onWheel={blurOnWheel}
                     onKeyDown={preventMinus}
-                    {...form.register("cuotaInicial", { setValueAs: (v) => toNumber(v, 0) })}
+                    {...form.register("cuotaInicial", {
+                      setValueAs: (v) => toNumber(v, 0),
+                    })}
                   />
                 </label>
               </div>
 
-              {/* Costos & Seguros (del Word) */}
+              {/* Costos & Seguros */}
               <div>
-                <div className="text-sm font-medium text-emerald-900 mb-2">Costos & seguros</div>
+                <div className="text-sm font-medium text-emerald-900 mb-2">
+                  Costos & seguros
+                </div>
                 <div className={ROW}>
                   <label className={LABEL}>
                     Tasa desgravamen mensual (proporción)
@@ -459,13 +505,18 @@ export default function NuevaSimulacionPage() {
                       className={INPUT}
                       onWheel={blurOnWheel}
                       onKeyDown={preventMinus}
-                      {...form.register("tasaDesgravamenMensual", { setValueAs: (v) => toNumber(v, 0) })}
+                      {...form.register("tasaDesgravamenMensual", {
+                        setValueAs: (v) => toNumber(v, 0),
+                      })}
                     />
                   </label>
 
                   <label className={LABEL}>
                     Base del seguro de desgravamen
-                    <select className={INPUT} {...form.register("baseSeguroDesgravamen")}>
+                    <select
+                      className={INPUT}
+                      {...form.register("baseSeguroDesgravamen")}
+                    >
                       <option value="saldo">Saldo del periodo</option>
                       <option value="saldo_promedio">Saldo promedio del periodo</option>
                     </select>
@@ -479,7 +530,9 @@ export default function NuevaSimulacionPage() {
                       className={INPUT}
                       onWheel={blurOnWheel}
                       onKeyDown={preventMinus}
-                      {...form.register("gastosNotariales", { setValueAs: (v) => toNumber(v, 0) })}
+                      {...form.register("gastosNotariales", {
+                        setValueAs: (v) => toNumber(v, 0),
+                      })}
                     />
                   </label>
 
@@ -491,7 +544,9 @@ export default function NuevaSimulacionPage() {
                       className={INPUT}
                       onWheel={blurOnWheel}
                       onKeyDown={preventMinus}
-                      {...form.register("gastosRegistrales", { setValueAs: (v) => toNumber(v, 0) })}
+                      {...form.register("gastosRegistrales", {
+                        setValueAs: (v) => toNumber(v, 0),
+                      })}
                     />
                   </label>
 
@@ -503,7 +558,9 @@ export default function NuevaSimulacionPage() {
                       className={INPUT}
                       onWheel={blurOnWheel}
                       onKeyDown={preventMinus}
-                      {...form.register("tasacionPerito", { setValueAs: (v) => toNumber(v, 0) })}
+                      {...form.register("tasacionPerito", {
+                        setValueAs: (v) => toNumber(v, 0),
+                      })}
                     />
                   </label>
 
@@ -523,7 +580,8 @@ export default function NuevaSimulacionPage() {
                   </label>
                 </div>
                 <p className="text-xs text-neutral-600 mt-2">
-                  ITF aplicado en cuotas: 0.005% sobre (cuota financiera + seguro del periodo).
+                  ITF aplicado en cuotas: 0.005% sobre (cuota financiera + seguro del
+                  periodo).
                 </p>
               </div>
 
@@ -531,7 +589,10 @@ export default function NuevaSimulacionPage() {
                 <button onClick={goBack} className="rounded-lg border px-4 py-2 text-sm">
                   Anterior
                 </button>
-                <button onClick={onCalcular} className="rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm">
+                <button
+                  onClick={onCalcular}
+                  className="rounded-lg bg-emerald-700 text-white px-4 py-2 text-sm"
+                >
                   Calcular
                 </button>
               </div>
@@ -541,7 +602,6 @@ export default function NuevaSimulacionPage() {
 
         {/* Paso 3: Resultados */}
         {step === 3 && (
-          // ... (El resto del Paso 3 no cambia)
           <>
             <div className="text-sm text-emerald-900 font-medium">Resultados</div>
             <div className="rounded-2xl border bg-white p-4 space-y-4">
@@ -569,17 +629,28 @@ export default function NuevaSimulacionPage() {
                       <span>Cuota inicial</span>
                       <span>{fmtMoney(vals.cuotaInicial, vals.moneda)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Bonos</span>
-                      <span>
-                        {fmtMoney(
-                          (vals.bonoVerde ? vals.bonoVerdeMonto : 0),
-                          vals.moneda
-                        )}
-                      </span>
+                    {/* --- INICIO DE CAMBIOS --- */}
+                    <div className="flex justify-between font-medium">
+                      <span>Bonos aplicados (BBP + Verde)</span>
+                      <span>- {fmtMoney(bonosTotales, vals.moneda)}</span>
                     </div>
+                    {/* (Opcional) Desglose visible si quieres
+                    <div className="ml-2 text-xs opacity-80">
+                      <div className="flex justify-between">
+                        <span>• BBP</span>
+                        <span>{fmtMoney(vals.bbpMonto || 0, vals.moneda)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>• Bono Verde</span>
+                        <span>{fmtMoney(vals.bonoVerdeMonto || 0, vals.moneda)}</span>
+                      </div>
+                    </div>
+                    */}
+                    {/* --- FIN DE CAMBIOS --- */}
                     <div className="flex justify-between">
-                      <span>Gastos {vals.financiarGastos ? "(financiados)" : "(no financiados)"}</span>
+                      <span>
+                        Gastos {vals.financiarGastos ? "(financiados)" : "(no financiados)"}
+                      </span>
                       <span>{fmtMoney(totalGastos, vals.moneda)}</span>
                     </div>
                     <div className="flex justify-between">
@@ -592,9 +663,7 @@ export default function NuevaSimulacionPage() {
                     </div>
                     <div className="flex justify-between">
                       <span>Tasa</span>
-                      <span>
-                        {(vals.tasaValor * 100).toFixed(2)}% TEA
-                      </span>
+                      <span>{(vals.tasaValor * 100).toFixed(2)}% TEA</span>
                     </div>
                     <div className="flex justify-between">
                       <span>i mensual</span>
@@ -630,7 +699,10 @@ export default function NuevaSimulacionPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    <button onClick={goBack} className="rounded-lg border px-4 py-2 text-sm w-full">
+                    <button
+                      onClick={goBack}
+                      className="rounded-lg border px-4 py-2 text-sm w-full"
+                    >
                       Anterior
                     </button>
                     <button
@@ -646,7 +718,10 @@ export default function NuevaSimulacionPage() {
               </div>
             </div>
             <div className="pt-1">
-              <button onClick={() => setStep(1)} className="rounded-lg border px-4 py-2 text-sm">
+              <button
+                onClick={() => setStep(1)}
+                className="rounded-lg border px-4 py-2 text-sm"
+              >
                 Volver al inicio
               </button>
             </div>
