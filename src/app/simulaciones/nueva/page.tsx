@@ -61,12 +61,18 @@ export default function NuevaSimulacionPage() {
     form.setValue("precioVenta", c.precio);
 
     const bbpMonto = calcularBonoBuenPagador(c.precio);
-    const bonoVerdeMonto = calcularBonoVerde(c.precio);
 
     form.setValue("bbp", bbpMonto > 0);
     form.setValue("bbpMonto", bbpMonto);
-    form.setValue("bonoVerde", bonoVerdeMonto > 0);
-    form.setValue("bonoVerdeMonto", bonoVerdeMonto);
+// Cálculo Bono Verde (Corregido)
+    let bonoVerdeMonto = 0; // Por defecto es 0
+    if (c.eco) {
+      // 1. Solo calculamos si la casa es 'eco'
+      bonoVerdeMonto = calcularBonoVerde(c.precio);
+    }
+    // 2. El flag 'bonoVerde' se basa en 'c.eco', no en el monto
+    form.setValue("bonoVerde", c.eco); 
+    form.setValue("bonoVerdeMonto", bonoVerdeMonto);
   };
 
   // Observados/calculados
