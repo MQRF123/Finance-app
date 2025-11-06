@@ -7,6 +7,8 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import { auth } from "@/lib/firebase";
 
+export const dynamic = 'force-dynamic';
+
 function mapAuthError(e: FirebaseError | Error): string {
   const code = (e as FirebaseError).code ?? "";
   switch (code) {

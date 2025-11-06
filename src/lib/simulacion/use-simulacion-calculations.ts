@@ -3,17 +3,19 @@ import { FormVals } from "./types";
 import { tasaMensual, ITF } from "./utils";
 import { generarPlan, type SimInput, type SeguroDesgravamen } from "@/lib/calculations/schedule";
 
-interface SimulacionCalculationsParams {
-  vals: FormVals;
-  principalFinanciado: number;
-  totalGastos: number;
-}
 
-export function useSimulacionCalculations({
-  vals,
-  principalFinanciado,
-  totalGastos,
-}: SimulacionCalculationsParams) {
+export function useSimulacionCalculations(vals: FormVals) {
+  // Cálculos derivados de `vals`
+  const { bonos, totalGastos, principalFinanciado } = useMemo(() => {
+    const bonos = (vals.bbp ? vals.bbpMonto ?? 0 : 0) + (vals.bonoVerde ? vals.bonoVerdeMonto ?? 0 : 0);
+    const totalGastos = vals.gastosNotariales + vals.gastosRegistrales + vals.tasacionPerito;
+    const principalFinanciado = Math.max(
+      0,
+      vals.precioVenta - vals.cuotaInicial - bonos + (vals.financiarGastos ? totalGastos : 0)
+    );
+    return { bonos, totalGastos, principalFinanciado };
+  }, [vals]);
+
   const i = useMemo(() => tasaMensual(vals.tasaValor), [vals.tasaValor]);
   const iMensualPct = useMemo(() => i * 100, [i]);
 
@@ -57,13 +59,17 @@ export function useSimulacionCalculations({
   return {
     i,
     iMensualPct,
-    tea: tcea, // <--- AHORA ES TCEA
+    tea: tcea,
     pagoGracia,
     pagoRegular: pagoConstante + seguroMes1 + itfMes1, // Aprox
     mesesAmort: vals.plazoMeses - vals.mesesGracia,
     seguroMes1,
     itfMes1,
     cuotaBase: pagoConstante,
-    tcea, // Devolver TCEA real
+    tcea,
+    // Devolver estos también
+    bonos,
+    totalGastos,
+    principalFinanciado,
   };
 }

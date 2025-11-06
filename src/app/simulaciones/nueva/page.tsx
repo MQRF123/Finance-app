@@ -61,7 +61,7 @@ export default function NuevaSimulacionPage() {
     form.setValue("precioVenta", c.precio);
 
     const bbpMonto = calcularBonoBuenPagador(c.precio);
-    const bonoVerdeMonto = calcularBonoVerde(c.precio, c.eco);
+    const bonoVerdeMonto = calcularBonoVerde(c.precio);
 
     form.setValue("bbp", bbpMonto > 0);
     form.setValue("bbpMonto", bbpMonto);
@@ -71,17 +71,6 @@ export default function NuevaSimulacionPage() {
 
   // Observados/calculados
   const vals = form.watch();
-
-  // Bonos
-  const bonos = (vals.bbp ? vals.bbpMonto ?? 0 : 0) + (vals.bonoVerde ? vals.bonoVerdeMonto ?? 0 : 0);
-
-  // Gastos (si financiar = true, se suman al principal)
-  const totalGastos = vals.gastosNotariales + vals.gastosRegistrales + vals.tasacionPerito;
-
-  const principalFinanciado = Math.max(
-    0,
-    vals.precioVenta - vals.cuotaInicial - bonos + (vals.financiarGastos ? totalGastos : 0)
-  );
 
   const {
     i,
@@ -93,7 +82,10 @@ export default function NuevaSimulacionPage() {
     itfMes1,
     cuotaBase,
     tcea,
-  } = useSimulacionCalculations({ vals, principalFinanciado, totalGastos });
+    bonos,
+    totalGastos,
+    principalFinanciado,
+  } = useSimulacionCalculations(vals);
 
   // Hoy para min de fecha
   const hoy = useMemo(() => {

@@ -90,10 +90,12 @@ export function Paso3Resultados({
                 <span>{mesesAmort} meses</span>
               </div>
               <div className="flex justify-between">
-                <span>Tasa</span>
-                <span>
-                  {(tcea * 100).toFixed(2)}% TCEA
-                </span>
+                <span>TCEA</span>
+                <span>{(tcea * 100).toFixed(2)}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span>TEA (Tasa Interés)</span>
+                <span>{(currentVals.tasaValor * 100).toFixed(2)}%</span>
               </div>
               <div className="flex justify-between">
                 <span>i mensual</span>

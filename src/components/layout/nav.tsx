@@ -36,10 +36,11 @@ export default function Nav() {
       <nav className="flex-grow">
         <ul className="space-y-2">
           {links.map((link) => {
-            const isActive =
-              link.href === '/dashboard'
+            const isActive = pathname
+              ? link.href === '/dashboard'
                 ? pathname === '/dashboard'
-                : pathname.startsWith(link.href);
+                : pathname.startsWith(link.href)
+              : false;
 
             return (
               <li key={link.href}>

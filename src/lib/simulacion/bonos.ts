@@ -14,9 +14,6 @@ export function calcularBonoBuenPagador(precioVenta: number): number {
   return 0;
 }
 
-export function calcularBonoVerde(precioVenta: number, esEco: boolean): number {
-  if (!esEco) {
-    return 0;
-  }
+export function calcularBonoVerde(precioVenta: number): number {
   return Math.min(precioVenta * 0.01, 12000);
 }
