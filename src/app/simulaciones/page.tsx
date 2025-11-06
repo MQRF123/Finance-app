@@ -13,7 +13,8 @@ import { toNumber, toInt, preventMinus, blurOnWheel, tasaMensual, fmtMoney, ITF 
 
 // --- INICIO DE CAMBIOS ---
 // 1. Importamos el nuevo componente y la lista de casas
-import { SimulacionCards, casas } from "@/components/simulaciones/cards/simulacion-card";
+import { SimulacionCards } from "@/components/simulaciones/cards/simulacion-card";
+import { casas } from "@/lib/simulacion/data/casas";
 // --- FIN DE CAMBIOS ---
 
 

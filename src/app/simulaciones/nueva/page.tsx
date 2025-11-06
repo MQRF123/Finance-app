@@ -9,7 +9,7 @@ import { type FormVals, type Casa } from "@/lib/simulacion/types";
 import { saveSimulation } from "@/lib/simulacion/services/firebase";
 import { useSimulacionCalculations } from "@/lib/simulacion/use-simulacion-calculations";
 import { SimulacionForm } from "@/components/simulaciones/SimulacionForm";
-
+import { casas } from "@/lib/simulacion/data/casas";
 import { calcularBonoBuenPagador, calcularBonoVerde } from "@/lib/simulacion/bonos";
 
 const defaultValues: FormVals = {
@@ -52,21 +52,6 @@ export default function NuevaSimulacionPage() {
   const [selCasa, setSelCasa] = useState<string | null>(null);
 
   const form = useForm<FormVals>({ defaultValues, mode: "onTouched" });
-
-  // Catálogo (estático, razonable y sin SSR randomness)
-  const casas: Casa[] = useMemo(
-    () => [
-      { id: "c1", titulo: "Casa Miraflores", precio: 250000, m2: 118, eco: true,  distrito: "Miraflores" },
-      { id: "c2", titulo: "Casa Surco",       precio: 235000, m2: 112, eco: false, distrito: "Santiago de Surco" },
-      { id: "c3", titulo: "Casa Chorrillos",  precio: 199000, m2: 98,  eco: true,  distrito: "Chorrillos" },
-      { id: "c4", titulo: "Casa San Miguel",  precio: 185000, m2: 86,  eco: false, distrito: "San Miguel" },
-      { id: "c5", titulo: "Casa Comas",       precio: 150000, m2: 76,  eco: false, distrito: "Comas" },
-      { id: "c6", titulo: "Casa Magdalena",   precio: 210000, m2: 94,  eco: true,  distrito: "Magdalena del Mar" },
-      { id: "c7", titulo: "Casa Ate",         precio: 165000, m2: 80,  eco: false, distrito: "Ate" },
-      { id: "c8", titulo: "Casa San Borja",   precio: 245000, m2: 120, eco: true,  distrito: "San Borja" },
-    ],
-    []
-  );
 
   const onCasaSelect = (c: Casa) => {
     setSelCasa(c.id);
