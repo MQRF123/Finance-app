@@ -5,12 +5,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 // Asegúrate de instalar: npm install @heroicons/react
-import { HomeIcon, CalculatorIcon } from '@heroicons/react/24/outline';
+import { HomeIcon, CalculatorIcon, TableCellsIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils/cn'; // O tu utilidad para clases
 
 const links = [
   { href: '/dashboard', label: 'Dashboard', icon: HomeIcon },
-  { href: '/simulaciones', label: 'Simulaciones', icon: CalculatorIcon },
+  { href: '/simulaciones/nueva', label: 'Simulaciones', icon: CalculatorIcon },
+  { href: '/simulaciones/list', label: 'Flujos de pagos', icon: TableCellsIcon },
 ];
 
 export default function Nav() {
