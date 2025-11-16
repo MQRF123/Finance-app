@@ -42,6 +42,7 @@ export function toSimulacion(d: QueryDocumentSnapshot<DocumentData>): Simulacion
     totITF: Number(data.totITF ?? 0),
     desembolsoNeto: Number(data.desembolsoNeto ?? 0),
     pagoConstante: Number(data.pagoConstante ?? 0),
+    form: data.form,
   };
 }
 

@@ -81,6 +81,9 @@ export interface Simulacion {
   // Timestamps
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+
+  // Raw form values
+  form?: FormVals;
 }
 
 export type FormVals = {

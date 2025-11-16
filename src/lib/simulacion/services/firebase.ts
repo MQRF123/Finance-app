@@ -1,6 +1,6 @@
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, serverTimestamp, getDocs, doc, getDoc, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { type FormVals, type SimulationSummary } from "@/lib/simulacion/types";
+import { type FormVals, type SimulationSummary, type Simulacion } from "@/lib/simulacion/types";
 
 interface SaveSimulationParams {
   userId: string;
@@ -27,4 +27,21 @@ export async function saveSimulation(params: SaveSimulationParams) {
     resumen,
     form,
   });
+}
+
+export async function getAllSimulaciones(userId: string): Promise<(Simulacion & { id: string })[]> {
+  const q = query(collection(db, "simulaciones"), where("userId", "==", userId));
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Simulacion & { id: string }));
+}
+
+export async function getSimulacionById(id: string): Promise<(Simulacion & { id: string }) | null> {
+  const docRef = doc(db, "simulaciones", id);
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    return { id: docSnap.id, ...docSnap.data() } as Simulacion & { id: string };
+  } else {
+    return null;
+  }
 }
