@@ -1,18 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth/use-auth';
 import { getSimulacionById } from '@/lib/simulacion/services/firebase';
 import { generarPlan, type SimInput } from '@/lib/calculations/schedule';
 import { tasaMensual, fmtMoney } from '@/lib/simulacion/utils';
 import { Simulacion } from '@/lib/simulacion/types';
 
-type Props = {
-  params: { id: string };
-};
+type Props = unknown;
 
-export default function CronogramaPage({ params }: Props) {
-  const { id } = params;
+export default function CronogramaPage(props: Props) {
+  const { params } = props as { params: { id: string } | Promise<{ id: string }> };
+
+  // Detect promise-like objects without using `any` (ESLint rule).
+  function isThenable<T = unknown>(v: unknown): v is Promise<T> {
+    return typeof v === 'object' && v !== null && 'then' in v && typeof (v as { then?: unknown }).then === 'function';
+  }
+
+  type ReactUse = { use: <T>(p: Promise<T>) => T };
+
+  const resolvedParams = isThenable(params)
+    ? (React as unknown as ReactUse).use(params as Promise<{ id: string }>)
+    : (params as { id: string });
+
+  const { id } = resolvedParams as { id: string };
   const { user } = useAuth();
   const [simData, setSimData] = useState<(Simulacion & { id: string }) | null>(null);
   const [loading, setLoading] = useState(true);
