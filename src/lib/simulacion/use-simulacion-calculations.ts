@@ -3,7 +3,6 @@ import { FormVals } from "./types";
 import { tasaMensual, ITF } from "./utils";
 import { generarPlan, type SimInput, type SeguroDesgravamen } from "@/lib/calculations/schedule";
 
-
 export function useSimulacionCalculations(vals: FormVals) {
   // Cálculos derivados de `vals`
   const { bonos, totalGastos, principalFinanciado } = useMemo(() => {
@@ -16,26 +15,42 @@ export function useSimulacionCalculations(vals: FormVals) {
     return { bonos, totalGastos, principalFinanciado };
   }, [vals]);
 
-  const i = useMemo(() => tasaMensual(vals.tasaValor), [vals.tasaValor]);
+  // CORRECCIÓN CRÍTICA:
+  // vals.tasaValor viene como entero (ej. 9).
+  // Debemos dividir entre 100 para obtener 0.09 antes de convertir a mensual.
+  const i = useMemo(() => {
+    const teaDecimal = vals.tasaValor / 100;
+    return tasaMensual(teaDecimal);
+  }, [vals.tasaValor]);
+
+  // Para mostrar en porcentaje, multiplicamos por 100
   const iMensualPct = useMemo(() => i * 100, [i]);
 
   const plan = useMemo(() => {
+    // CORRECCIÓN: Dividir seguro entre 100 también
+    const tasaSeguroDecimal = vals.tasaDesgravamenMensual / 100;
+
     const seguro: SeguroDesgravamen = {
       mode: "porcentaje",
-      tasaMensual: vals.tasaDesgravamenMensual,
+      tasaMensual: tasaSeguroDecimal,
       base: vals.baseSeguroDesgravamen,
     };
+
+    // CORRECCIÓN: Dividir COK entre 100
+    const cokDecimal = (vals.cokValor || vals.tasaValor) / 100;
+    const cokMensual = tasaMensual(cokDecimal);
 
     const input: SimInput = {
       principal: principalFinanciado,
       nMeses: vals.plazoMeses,
-      iMensual: i,
+      iMensual: i, // i ya es correcta (0.0072...)
       graciaMeses: vals.mesesGracia,
       graciaTipo: vals.tipoGracia,
       itf: ITF,
       seguro,
       costosIniciales: vals.financiarGastos ? 0 : totalGastos,
       cobraSeguroEnGraciaTotal: vals.tipoGracia === "total",
+      cokMensual,
     };
 
     return generarPlan(input);
@@ -59,15 +74,14 @@ export function useSimulacionCalculations(vals: FormVals) {
   return {
     i,
     iMensualPct,
-    tea: tcea,
+    tea: tcea, // Ojo: aquí devuelves tcea en la variable llamada 'tea', asegúrate de usarla bien
     pagoGracia,
-    pagoRegular: pagoConstante + seguroMes1 + itfMes1, // Aprox
+    pagoRegular: pagoConstante + seguroMes1 + itfMes1,
     mesesAmort: vals.plazoMeses - vals.mesesGracia,
     seguroMes1,
     itfMes1,
     cuotaBase: pagoConstante,
     tcea,
-    // Devolver estos también
     bonos,
     totalGastos,
     principalFinanciado,

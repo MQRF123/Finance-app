@@ -97,6 +97,7 @@ export type FormVals = {
   // Paso 2 (Financiamiento y condiciones)
   
   tasaValor: number;        // proporción (0.10 = 10% anual TEA)
+  cokValor: number;         // Tasa de descuento / COK en porcentaje (20 = 20%)
   plazoMeses: number;       // mínimo 1
   tipoGracia: TipoGracia;
   mesesGracia: number;      // >= 0 y < plazoMeses

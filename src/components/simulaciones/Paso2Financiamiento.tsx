@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { useFormContext } from "react-hook-form";
 import { FormVals } from "@/lib/simulacion/types";
 import { toNumber, toInt, preventMinus, blurOnWheel } from "@/lib/simulacion/utils";
-import { BANCOS_PERU } from "@/lib/simulacion/data/bancos";
+import { BANCOS_PERU } from "@/lib/simulacion/data/bancos"; // Asegúrate de tener este archivo creado
 
 interface Paso2FinanciamientoProps {
   goBack: () => void;
@@ -23,19 +23,25 @@ export function Paso2Financiamiento({
 }: Paso2FinanciamientoProps) {
   const { register, watch, setValue } = useFormContext<FormVals>();
 
-  const teaIngresada = watch('tasaValor');
+  // 1. Observar la TEA ingresada en tiempo real
+  const teaIngresada = watch("tasaValor");
 
+  // 2. Filtrar bancos disponibles
   const bancosDisponibles = useMemo(() => {
-    const teaPercentage = teaIngresada * 100;
-    if (isNaN(teaPercentage)) return [];
-    return BANCOS_PERU.filter(banco => teaPercentage >= banco.teaMin && teaPercentage <= banco.teaMax);
+    const tea = Number(teaIngresada);
+    if (!tea) return [];
+    // Filtramos bancos donde la TEA esté dentro de su rango
+    return BANCOS_PERU.filter((b) => tea >= b.teaMin && tea <= b.teaMax);
   }, [teaIngresada]);
 
+  // 3. Manejar selección de banco
   const handleBancoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedBankId = e.target.value;
-    const banco = BANCOS_PERU.find(b => b.id === selectedBankId);
+    const bancoId = e.target.value;
+    const banco = BANCOS_PERU.find((b) => b.id === bancoId);
     if (banco) {
-      setValue('tasaDesgravamenMensual', banco.desgravamenMensual, { shouldValidate: true });
+      // Actualizar el seguro automáticamente (sin dividir, el input espera 0.028)
+      // Asumimos que en bancos.ts el seguro está guardado como 0.028
+      setValue("tasaDesgravamenMensual", banco.desgravamenMensual);
     }
   };
 
@@ -47,37 +53,65 @@ export function Paso2Financiamiento({
       <div className="rounded-2xl border bg-white p-4 space-y-5">
         {/* Tasa y plazo */}
         <div className={ROW}>
-          <label className={LABEL}>
-            Tasa Efectiva Anual (TEA)
-            <input
-              type="number"
-              min={0}
-              step="0.0001"
-              className={INPUT}
-              placeholder="Ej: 0.10 para 10%"
-              onWheel={blurOnWheel}
-              onKeyDown={preventMinus}
-              {...register("tasaValor", { setValueAs: (v) => toNumber(v, 0) })}
-            />
-          </label>
+          <div className="space-y-2">
+            <label className={LABEL}>
+              Tasa Efectiva Anual (TEA) %
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                className={INPUT}
+                placeholder="Ej: 9.5 para 9.5%"
+                onWheel={blurOnWheel}
+                onKeyDown={preventMinus}
+                {...register("tasaValor", { setValueAs: (v) => toNumber(v, 0) })}
+              />
+            </label>
+            
+            {/* --- SELECTOR DE BANCOS INTELIGENTE --- */}
+            {teaIngresada > 0 && (
+              <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-100">
+                <label className="text-xs text-emerald-700 font-medium mb-1 block">
+                  Bancos sugeridos para {teaIngresada}% TEA:
+                </label>
+                <select 
+                  className="w-full text-sm p-2 rounded border border-emerald-200 bg-white"
+                  onChange={handleBancoChange}
+                  defaultValue=""
+                >
+                  <option value="" disabled>-- Selecciona para aplicar seguro --</option>
+                  {bancosDisponibles.length > 0 ? (
+                    bancosDisponibles.map((banco) => (
+                      <option key={banco.id} value={banco.id}>
+                        {banco.nombre} (Seguro: {banco.desgravamenMensual}%)
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" disabled>No hay bancos con esta tasa exacta</option>
+                  )}
+                </select>
+              </div>
+            )}
+          </div>
 
-          <label className={LABEL}>
-            Banco sugerido (según TEA)
-            <select
-              className={INPUT}
-              onChange={handleBancoChange}
-              defaultValue=""
-            >
-              <option value="" disabled>
-                {bancosDisponibles.length > 0 ? 'Selecciona un banco' : 'Ningún banco coincide con esta tasa'}
-              </option>
-              {bancosDisponibles.map((banco) => (
-                <option key={banco.id} value={banco.id}>
-                  {banco.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="space-y-2">
+             <label className={LABEL}>
+              Tasa de Descuento / COK (%)
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                className={INPUT}
+                placeholder="Ej: 20 para 20%"
+                onWheel={blurOnWheel}
+                onKeyDown={preventMinus}
+                {...register("cokValor", { setValueAs: (v) => toNumber(v, 0) })}
+              />
+            </label>
+            <p className="text-xs text-gray-500">
+              Tasa de oportunidad. Si es mayor a la TEA, el VAN será positivo.
+            </p>
+          </div>
 
           <label className={LABEL}>
             Plazo (meses)
@@ -115,18 +149,6 @@ export function Paso2Financiamiento({
           </label>
 
           <label className={LABEL}>
-            Administración inicial (S/)
-            <input
-              type="number"
-              min={0}
-              className={INPUT}
-              onWheel={blurOnWheel}
-              onKeyDown={preventMinus}
-              {...register("adminInicial", { setValueAs: (v) => toNumber(v, 0) })}
-            />
-          </label>
-
-          <label className={LABEL}>
             Cuota inicial (S/)
             <input
               type="number"
@@ -139,21 +161,20 @@ export function Paso2Financiamiento({
           </label>
         </div>
 
-        {/* Costos & Seguros (del Word) */}
+        {/* Costos & Seguros */}
         <div>
           <div className="text-sm font-medium text-emerald-900 mb-2">Costos & seguros</div>
           <div className={ROW}>
             <label className={LABEL}>
-              Tasa desgravamen mensual (proporción)
+              Tasa desgravamen mensual (%)
               <input
                 type="number"
                 min={0}
                 step="0.0001"
-                placeholder="Ej. 0.0035 = 0.35%"
-                className={`${INPUT} bg-gray-100`}
+                placeholder="Ej. 0.028 para 0.028%"
+                className={INPUT}
                 onWheel={blurOnWheel}
                 onKeyDown={preventMinus}
-                readOnly
                 {...register("tasaDesgravamenMensual", { setValueAs: (v) => toNumber(v, 0) })}
               />
             </label>
@@ -166,7 +187,8 @@ export function Paso2Financiamiento({
               </select>
             </label>
 
-            <label className={LABEL}>
+            {/* ... (Resto de inputs de gastos notariales, etc. se mantienen igual) ... */}
+             <label className={LABEL}>
               Gastos notariales (S/)
               <input
                 type="number"
@@ -217,9 +239,6 @@ export function Paso2Financiamiento({
               />
             </label>
           </div>
-          <p className="text-xs text-neutral-600 mt-2">
-            ITF aplicado en cuotas: 0.005% sobre (cuota financiera + seguro del periodo).
-          </p>
         </div>
 
         <div className="flex justify-between pt-2">

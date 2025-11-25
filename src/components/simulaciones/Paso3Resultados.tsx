@@ -37,7 +37,17 @@ export function Paso3Resultados({
   tcea,
 }: Paso3ResultadosProps) {
   const { watch } = useFormContext<FormVals>();
-  const currentVals = watch(); // Use currentVals to avoid prop drilling issues if vals is not updated
+  const currentVals = watch();
+
+  // Helper para mostrar la TEA correctamente (sea entero 12 o decimal 0.12)
+  const displayTea = currentVals.tasaValor > 1 
+    ? currentVals.tasaValor 
+    : currentVals.tasaValor * 100;
+
+  // Helper para mostrar la TCEA correctamente
+  // Si tcea > 1 (ej. 9.37), es porcentaje -> No multiplicar
+  // Si tcea < 1 (ej. 0.0937), es decimal -> Multiplicar por 100
+  const displayTcea = tcea > 1 ? tcea : tcea * 100;
 
   return (
     <>
@@ -89,13 +99,14 @@ export function Paso3Resultados({
                 <span>Plazo</span>
                 <span>{mesesAmort} meses</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between font-medium text-emerald-700">
                 <span>TCEA</span>
-                <span>{(tcea * 100).toFixed(2)}%</span>
+                {/* CORREGIDO: Usamos displayTcea */}
+                <span>{displayTcea.toFixed(2)}%</span>
               </div>
               <div className="flex justify-between">
                 <span>TEA (Tasa Interés)</span>
-                <span>{(currentVals.tasaValor * 100).toFixed(2)}%</span>
+                <span>{displayTea.toFixed(2)}%</span>
               </div>
               <div className="flex justify-between">
                 <span>i mensual</span>
@@ -107,8 +118,8 @@ export function Paso3Resultados({
                   <span>{fmtMoney(pagoGracia, currentVals.moneda)}</span>
                 </div>
               )}
-              <div className="flex justify-between">
-                <span>Cuota financiera (sin seguro/ITF)</span>
+              <div className="flex justify-between border-t pt-1 mt-1">
+                <span>Cuota financiera</span>
                 <span>{fmtMoney(cuotaBase, currentVals.moneda)}</span>
               </div>
               <div className="flex justify-between">
@@ -142,10 +153,10 @@ export function Paso3Resultados({
               </button>
             </div>
 
-            {msg && <p className="text-xs text-neutral-700">{msg}</p>}
+            {msg && <p className="text-xs text-neutral-700 text-center">{msg}</p>}
           </div>
         </div>
-        <div className="pt-1">
+        <div className="pt-1 text-center">
           <button onClick={() => setStep(1)} className="rounded-lg border px-4 py-2 text-sm">
             Volver al inicio
           </button>

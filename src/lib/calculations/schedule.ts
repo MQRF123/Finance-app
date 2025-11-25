@@ -18,6 +18,7 @@ export interface SimInput {
   seguro: SeguroDesgravamen;      // fijo o %
   costosIniciales: number;        // notariales/registrales/tasación/etc. (no financiados)
   cobraSeguroEnGraciaTotal?: boolean;
+  cokMensual?: number;
 }
 
 export interface Row {
@@ -48,7 +49,7 @@ export interface SimOutput {
 export function generarPlan(input: SimInput): SimOutput {
   const {
     principal, nMeses, iMensual, graciaMeses, graciaTipo, itf, seguro,
-    costosIniciales, cobraSeguroEnGraciaTotal = false,
+    costosIniciales, cobraSeguroEnGraciaTotal = false, cokMensual,
   } = input;
 
   let saldo = principal;
@@ -160,7 +161,8 @@ export function generarPlan(input: SimInput): SimOutput {
     // flujo sin cambio de signo, no hay IRR
   }
 
-  const vanMensual = npv(iMensual, flujo);
+  const tasaDescuento = cokMensual ?? iMensual;
+  const vanMensual = npv(tasaDescuento, flujo);
 
   return {
     rows,

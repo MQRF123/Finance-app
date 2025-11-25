@@ -22,6 +22,7 @@ const defaultValues: FormVals = {
 
   // Financiamiento
   tasaValor: 0.1,
+  cokValor: 20,
   plazoMeses: 240,
   tipoGracia: "sin",
   mesesGracia: 0,
