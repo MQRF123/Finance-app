@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { useFormContext } from "react-hook-form";
 import { FormVals } from "@/lib/simulacion/types";
 import { toNumber, toInt, preventMinus, blurOnWheel } from "@/lib/simulacion/utils";
+import { BANCOS_PERU } from "@/lib/simulacion/data/bancos";
 
 interface Paso2FinanciamientoProps {
   goBack: () => void;
@@ -20,7 +21,23 @@ export function Paso2Financiamiento({
   onCalcular,
   hoy,
 }: Paso2FinanciamientoProps) {
-  const { register } = useFormContext<FormVals>();
+  const { register, watch, setValue } = useFormContext<FormVals>();
+
+  const teaIngresada = watch('tasaValor');
+
+  const bancosDisponibles = useMemo(() => {
+    const teaPercentage = teaIngresada * 100;
+    if (isNaN(teaPercentage)) return [];
+    return BANCOS_PERU.filter(banco => teaPercentage >= banco.teaMin && teaPercentage <= banco.teaMax);
+  }, [teaIngresada]);
+
+  const handleBancoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedBankId = e.target.value;
+    const banco = BANCOS_PERU.find(b => b.id === selectedBankId);
+    if (banco) {
+      setValue('tasaDesgravamenMensual', banco.desgravamenMensual, { shouldValidate: true });
+    }
+  };
 
   return (
     <>
@@ -42,6 +59,24 @@ export function Paso2Financiamiento({
               onKeyDown={preventMinus}
               {...register("tasaValor", { setValueAs: (v) => toNumber(v, 0) })}
             />
+          </label>
+
+          <label className={LABEL}>
+            Banco sugerido (según TEA)
+            <select
+              className={INPUT}
+              onChange={handleBancoChange}
+              defaultValue=""
+            >
+              <option value="" disabled>
+                {bancosDisponibles.length > 0 ? 'Selecciona un banco' : 'Ningún banco coincide con esta tasa'}
+              </option>
+              {bancosDisponibles.map((banco) => (
+                <option key={banco.id} value={banco.id}>
+                  {banco.nombre}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={LABEL}>
@@ -115,9 +150,10 @@ export function Paso2Financiamiento({
                 min={0}
                 step="0.0001"
                 placeholder="Ej. 0.0035 = 0.35%"
-                className={INPUT}
+                className={`${INPUT} bg-gray-100`}
                 onWheel={blurOnWheel}
                 onKeyDown={preventMinus}
+                readOnly
                 {...register("tasaDesgravamenMensual", { setValueAs: (v) => toNumber(v, 0) })}
               />
             </label>

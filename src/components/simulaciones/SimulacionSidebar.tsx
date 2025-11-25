@@ -7,7 +7,7 @@ interface SimulacionSidebarProps {
 export function SimulacionSidebar({ step }: SimulacionSidebarProps) {
   return (
     <aside className="rounded-2xl bg-emerald-800 text-white p-4 space-y-3">
-       المحتوى
+       Contenido
       {[ 
         { n: 1, t: "Selecciona\nla vivienda" },
         { n: 2, t: "Financiamiento\ny condiciones" },
