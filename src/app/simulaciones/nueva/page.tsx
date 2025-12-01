@@ -169,7 +169,7 @@ export default function NuevaSimulacionPage() {
         },
         form: vals,
       });
-      setMsg("✔ Simulación guardada. La verás en Dashboard e Historial.");
+      setMsg("✔ Simulación guardada. La verás en Dashboard y tambien el flujo de pagos.");
     } catch (e: unknown) {
       console.error(e);
       const message = e instanceof Error ? e.message : "Error al guardar.";

@@ -170,6 +170,7 @@ export function Paso2Financiamiento({
               <input
                 type="number"
                 min={0}
+                readOnly={true}
                 step="0.0001"
                 placeholder="Ej. 0.028 para 0.028%"
                 className={INPUT}
