@@ -112,19 +112,27 @@ export function Paso2Financiamiento({
               Tasa de oportunidad. Si es mayor a la TEA, el VAN será positivo.
             </p>
           </div>
-
-          <label className={LABEL}>
-            Plazo (meses)
-            <input
-              type="number"
-              min={1}
-              step={1}
-              className={INPUT}
-              onWheel={blurOnWheel}
-              onKeyDown={preventMinus}
-              {...register("plazoMeses", { setValueAs: (v) => toInt(v, 1) })}
-            />
-          </label>
+          
+          {/* Input de Plazo con validación de 5 a 25 años */}
+          <div className="space-y-1">
+            <label className={LABEL}>
+              Plazo (meses)
+              <input
+                type="number"
+                min={60}  // 5 años
+                max={300} // 25 años
+                step={1}
+                className={INPUT}
+                placeholder="Entre 60 y 300"
+                onWheel={blurOnWheel}
+                onKeyDown={preventMinus}
+                {...register("plazoMeses", { setValueAs: (v) => toInt(v, 60) })}
+              />
+            </label>
+            <p className="text-xs text-gray-500">
+              Mínimo 5 años (60 meses), máximo 25 años (300 meses).
+            </p>
+          </div>
 
           <label className={LABEL}>
             Periodo de gracia

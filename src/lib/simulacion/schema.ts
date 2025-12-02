@@ -26,7 +26,10 @@ export const schema = z.object({
     .min(0.0001, "La tasa debe ser mayor a 0")
     .max(100, "La tasa no puede ser mayor al 100%"),
 
-  plazoMeses: z.coerce.number().min(1),
+  plazoMeses: z.coerce.number()
+    .min(60, "El plazo mínimo es de 5 años (60 meses)")
+    .max(300, "El plazo máximo es de 25 años (300 meses)"),
+    
   graciaTipo: z.enum(["sin", "parcial", "total"]).default("sin"),
   graciaMeses: z.coerce.number().min(0).default(0),
 
